@@ -58,7 +58,20 @@ struct GlitchControl: View {
                 set: { state.setGlitchValue(param.id, $0) })
     }
 
+    private var isModified: Bool {
+        param.kind != .seed && abs(state.glitchSettings[param.id] - param.defaultValue) > 1e-4
+    }
+
     var body: some View {
+        if state.showEditedOnly && !isModified {
+            EmptyView()
+        } else {
+            controlBody
+        }
+    }
+
+    @ViewBuilder
+    private var controlBody: some View {
         switch param.kind {
         case .toggle:
             Toggle(isOn: Binding(get: { value.wrappedValue >= 0.5 },

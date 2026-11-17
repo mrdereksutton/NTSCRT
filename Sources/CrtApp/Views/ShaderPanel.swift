@@ -127,7 +127,7 @@ struct ShaderPanel: View {
                         withTransaction(t) { expanded.wrappedValue.toggle() }
                     }
                     .padding(.top, 4)
-                    if expanded.wrappedValue {
+                    if expanded.wrappedValue || state.showEditedOnly {
                         ForEach(section.params, id: \.name) { param in
                             ParamControl(param: param)
                         }
@@ -276,7 +276,19 @@ private struct ParamControl: View {
         )
     }
 
+    private var isModified: Bool {
+        abs((state.paramValues[param.name] ?? param.initial) - state.shaderDefault(param)) > 1e-4
+    }
+
     var body: some View {
+        if state.showEditedOnly && !isModified {
+            EmptyView()
+        } else {
+            controlBody
+        }
+    }
+
+    private var controlBody: some View {
         let pres = presentation(for: param)
         let gate: ParamGate? = {
             if case .header = pres.kind { return nil }
@@ -290,7 +302,7 @@ private struct ParamControl: View {
                                           inputHeight: state.chainInputHeight)
         }()
 
-        VStack(alignment: .leading, spacing: 2) {
+        return VStack(alignment: .leading, spacing: 2) {
             Group {
                 switch pres.kind {
                 case .header:

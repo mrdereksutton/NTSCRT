@@ -103,10 +103,22 @@ private struct DigitalControl: View {
                 })
     }
 
+    private var isModified: Bool {
+        abs(state.digitalSettings[param.id] - param.defaultValue) > 1e-4
+    }
+
     var body: some View {
+        if state.showEditedOnly && !isModified {
+            EmptyView()
+        } else {
+            controlBody
+        }
+    }
+
+    private var controlBody: some View {
         let reason = idleReason
         let idle = reason != nil
-        Group {
+        return Group {
             switch param.kind {
             case .choice(let names):
                 HStack {

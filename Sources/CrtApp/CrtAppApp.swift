@@ -62,6 +62,21 @@ struct CrtAppApp: App {
                     .keyboardShortcut("r", modifiers: [.command, .option])
                     .disabled(appState == nil)
                 Divider()
+                Button("Quick Mode") { appState?.sidebarMode = .quick }
+                    .keyboardShortcut("1", modifiers: .command)
+                    .disabled(appState == nil)
+                Button("All Controls Mode") { appState?.sidebarMode = .allControls }
+                    .keyboardShortcut("2", modifiers: .command)
+                    .disabled(appState == nil)
+                Menu("Start from Era") {
+                    ForEach(EraRecipe.allCases) { recipe in
+                        Button("\(recipe.rawValue) — \(recipe.subtitle)") {
+                            appState?.applyEraRecipe(recipe)
+                        }
+                    }
+                }
+                .disabled(appState == nil)
+                Divider()
                 Button("Toggle Bypass All Effects") { appState?.bypassAllStages.toggle() }
                     .keyboardShortcut("\\", modifiers: [])
                     .disabled(appState == nil)

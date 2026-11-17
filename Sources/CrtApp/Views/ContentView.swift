@@ -2680,24 +2680,59 @@ private struct CropContextOverlay: View {
 }
 
 private struct Sidebar: View {
+    @Environment(AppState.self) private var state
+
     var body: some View {
+        @Bindable var state = state
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 SourcePanel()
+
+                HStack(spacing: 8) {
+                    Picker("", selection: $state.sidebarMode) {
+                        ForEach(SidebarMode.allCases) { mode in
+                            Text(mode.rawValue).tag(mode)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .labelsHidden()
+
+                    if state.sidebarMode == .allControls {
+                        Toggle(isOn: $state.showEditedOnly) {
+                            Text("Edited")
+                                .font(.caption)
+                        }
+                        .toggleStyle(.button)
+                        .controlSize(.small)
+                        .help("Show only controls whose values differ from clean defaults.")
+                    }
+                }
+
+                SignalAdvisoriesView()
+
                 Divider()
-                CropPanel()
-                Divider()
-                DigitalVideoPanel()
-                Divider()
-                NtscPanel()
-                Divider()
-                DownscalePanel()
-                Divider()
-                VcrPanel()
-                Divider()
-                GlitchPanel()
-                Divider()
-                ShaderPanel()
+
+                if state.sidebarMode == .quick {
+                    CropPanel()
+                    Divider()
+                    QuickControlsView {
+                        state.sidebarMode = .allControls
+                    }
+                } else {
+                    CropPanel()
+                    Divider()
+                    DigitalVideoPanel()
+                    Divider()
+                    NtscPanel()
+                    Divider()
+                    DownscalePanel()
+                    Divider()
+                    VcrPanel()
+                    Divider()
+                    GlitchPanel()
+                    Divider()
+                    ShaderPanel()
+                }
             }
             .padding(16)
         }

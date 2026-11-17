@@ -45,6 +45,8 @@ final class AppState {
         ProcessInfo.processInfo.environment["CRT_SLIDER_E2E"] != nil
         || ProcessInfo.processInfo.environment["CRT_PANEL_BENCH"] != nil
         || ProcessInfo.processInfo.environment["CRT_DUMP_TOOLTIPS"] != nil
+    var sidebarMode: SidebarMode = .quick
+    var showEditedOnly: Bool = false
 
     // MARK: - source
 
@@ -1863,6 +1865,7 @@ final class AppState {
         self.presetsRoot = presetsRoot
         setUpNtsc()
         reloadChain()
+        if expandAllPanelsForTesting { sidebarMode = .allControls }
         commitBaselineSnapshot()
     }
 

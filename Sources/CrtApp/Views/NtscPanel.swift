@@ -89,11 +89,31 @@ private struct NtscControl: View {
     let depth: Int
     @State private var groupExpanded = false
 
+    private func isSettingModified(_ s: NtscSetting) -> Bool {
+        switch s.kind {
+        case .group(let children):
+            if let defBool = state.ntscDefaults[s.name] as? Bool, state.ntscBool(s.name) != defBool { return true }
+            return children.contains(where: isSettingModified)
+        case .section(let children):
+            return children.contains(where: isSettingModified)
+        case .boolean:
+            let def = (state.ntscDefaults[s.name] as? Bool) ?? ((state.ntscDefaults[s.name] as? NSNumber)?.boolValue ?? false)
+            return state.ntscBool(s.name) != def
+        default:
+            let def = (state.ntscDefaults[s.name] as? NSNumber)?.doubleValue ?? 0
+            return abs(state.ntscNumber(s.name) - def) > 1e-4
+        }
+    }
+
     var body: some View {
-        Group { content }
-            .onAppear {
-                if state.expandAllPanelsForTesting { groupExpanded = true }
-            }
+        if state.showEditedOnly && !isSettingModified(setting) {
+            EmptyView()
+        } else {
+            Group { content }
+                .onAppear {
+                    if state.expandAllPanelsForTesting { groupExpanded = true }
+                }
+        }
     }
 
     @ViewBuilder
@@ -151,7 +171,7 @@ private struct NtscControl: View {
                     .toggleStyle(.switch)
                     .help(setting.description ?? "")
                 }
-                if state.ntscBool(setting.name) && groupExpanded {
+                if state.ntscBool(setting.name) && (groupExpanded || state.showEditedOnly) {
                     ForEach(children) { child in
                         NtscControl(setting: child, depth: depth + 1)
                     }
@@ -176,7 +196,7 @@ private struct NtscControl: View {
                     withTransaction(t) { groupExpanded.toggle() }
                 }
                 .help(setting.description ?? "")
-                if groupExpanded {
+                if groupExpanded || state.showEditedOnly {
                     ForEach(children) { child in
                         NtscControl(setting: child, depth: depth + 1)
                     }
