@@ -184,7 +184,7 @@ final class AppState {
         let ev = (timelineEnabled && !timelineKeys.isEmpty) ? makeTimelineEvaluator() : nil
         let total = timelineTotalFrames
         return ev.map { e in
-            { idx in
+            { @Sendable idx in
                 let t = total > 1 ? Double(idx) / Double(total - 1) : 0
                 return e.ntscJSON(at: t)
             }
@@ -218,10 +218,8 @@ final class AppState {
             options: [.userInitiated, .latencyCritical],
             reason: "video playback")
 
-        // Rotated tracks still go through the image generator (only it
-        // applies preferredTransform); CRT_FORCE_SEEK_DECODE keeps the old
-        // path reachable for A/B measurement.
-        if source.needsPreferredTransform || Self.forceSeekDecode {
+        // CRT_FORCE_SEEK_DECODE keeps the image-generator path reachable for A/B measurement.
+        if Self.forceSeekDecode {
             playbackTask = legacyPlaybackTask(source: source)
             return
         }
@@ -403,7 +401,7 @@ final class AppState {
         stopPrerender()
         guard !Self.frameCacheOff, let vs = videoSource, bakesChainInput,
               !videoPlaying, !exportInProgress,
-              !(vs.needsPreferredTransform || Self.forceSeekDecode) else { return }
+              !Self.forceSeekDecode else { return }
         let total = max(1, vs.totalFrames)
         guard chainInputCache.count(matching: currentCacheStamp) < total else {
             updateCachedRanges(force: true)
@@ -670,7 +668,7 @@ final class AppState {
             if staging.storageMode == .managed { blit.synchronize(resource: staging) }
             blit.endEncoding()
             cb.commit()
-            cb.waitUntilCompleted()
+            await cb.completed()
             cropDragContext = try? makeCGImage(from: staging)
             cropDragContextKey = key
         } else if let vs = videoSource {
@@ -2126,7 +2124,7 @@ final class AppState {
         }
         if let d = dict["downscale"] as? [String: Any] {
             if let v = d["enabled"] as? Bool { downscaleEnabled = v }
-            if let v = d["width"] as? Int { downscaleWidth = v }
+            if let v = d["width"] as? Int { downscaleWidth = min(4096, max(16, v)) }
             if let v = d["preset"] as? String { downscalePreset = v } else { downscalePreset = "Custom" }
             // Old look files carried an explicit height; it is now derived
             // from the source aspect, so it is intentionally ignored.
@@ -2202,11 +2200,12 @@ final class AppState {
             if let b = v["compare"] as? Bool { compareEnabled = b }
         }
         if let t = dict["timeline"] as? [String: Any] {
-            if let d = t["duration"] as? Double { timelineDuration = d }
-            if let f = t["fps"] as? Int { timelineFPS = f }
+            if let d = t["duration"] as? Double { timelineDuration = min(600, max(0.5, d)) }
+            if let f = t["fps"] as? Int { timelineFPS = min(120, max(1, f)) }
             if let rawKeys = t["keys"] as? [[String: Any]] {
                 timelineKeys = rawKeys.compactMap { k in
-                    guard let kt = k["t"] as? Double else { return nil }
+                    guard let ktRaw = k["t"] as? Double else { return nil }
+                    let kt = min(1, max(0, ktRaw))
                     let easing = (k["easing"] as? String).flatMap(KeyEasing.init(rawValue:)) ?? .linear
                     let shader = (k["shader"] as? [String: Double])?.mapValues { Float($0) } ?? [:]
                     let ntsc = k["ntsc"] as? [String: Any] ?? [:]

@@ -18,6 +18,7 @@ public final class VideoSource {
     public let durationSeconds: Double
     public let frameRate: Float
     public let pixelSize: CGSize
+    public let preferredTransform: CGAffineTransform
     public let totalFrames: Int
 
     private let device: MTLDevice
@@ -49,14 +50,16 @@ public final class VideoSource {
         guard let track = tracks.first else { throw Error.noVideoTrack }
         self.videoTrack = track
 
-        let (duration, fps, size) = try await (
+        let (duration, fps, size, transform) = try await (
             asset.load(.duration),
             track.load(.nominalFrameRate),
-            track.load(.naturalSize)
+            track.load(.naturalSize),
+            track.load(.preferredTransform)
         )
         self.durationSeconds = CMTimeGetSeconds(duration)
         self.frameRate = fps > 0 ? fps : 30
         self.pixelSize = size
+        self.preferredTransform = transform
         self.totalFrames = max(1, Int((self.durationSeconds * Double(self.frameRate)).rounded()))
 
         var cache: CVMetalTextureCache?
@@ -139,7 +142,7 @@ public final class VideoSource {
             pixelFormat: .bgra8Unorm, width: w, height: h, mipmapped: false
         )
         d.usage = [.shaderRead]
-        d.storageMode = .shared
+        d.storageMode = cpuStorageMode(for: device)
         guard let tex = device.makeTexture(descriptor: d) else {
             throw Error.decodeFailed("makeTexture")
         }
@@ -159,21 +162,26 @@ public final class VideoSource {
         let output: AVAssetReaderTrackOutput
         let device: MTLDevice
         let textureCache: CVMetalTextureCache
+        let preferredTransform: CGAffineTransform
         /// Frames come out cropped to this, copied into `ring` — a frame's
         /// texture holds until `cropDepth` frames later. Uncropped frames are
         /// the decoder's own buffers, zero-copy.
         let crop: SourceCrop?
         private let ring: CropRing?
+        private var uprightPool: CVPixelBufferPool?
+        private var uprightPoolSize = (width: 0, height: 0)
         /// More frames than any consumer holds at once (playback: queue +
         /// on screen + previous + the two being processed).
         public static let cropDepth = 12
 
         init(reader: AVAssetReader, output: AVAssetReaderTrackOutput,
-             device: MTLDevice, textureCache: CVMetalTextureCache, crop: SourceCrop?) {
+             device: MTLDevice, textureCache: CVMetalTextureCache,
+             preferredTransform: CGAffineTransform, crop: SourceCrop?) {
             self.reader = reader
             self.output = output
             self.device = device
             self.textureCache = textureCache
+            self.preferredTransform = preferredTransform
             self.crop = crop
             self.ring = crop.map { _ in CropRing(device: device, depth: Self.cropDepth) }
             reader.startReading()
@@ -203,8 +211,15 @@ public final class VideoSource {
 
         public func nextFrame() -> Frame? {
             guard let sb = output.copyNextSampleBuffer(),
-                  let pb = CMSampleBufferGetImageBuffer(sb) else { return nil }
+                  let rawPB = CMSampleBufferGetImageBuffer(sb) else { return nil }
             let pts = CMSampleBufferGetPresentationTimeStamp(sb)
+            let pb: CVPixelBuffer
+            if preferredTransform == .identity {
+                pb = rawPB
+            } else {
+                guard let rotated = uprightPixelBuffer(from: rawPB) else { return nil }
+                pb = rotated
+            }
             let w = CVPixelBufferGetWidth(pb)
             let h = CVPixelBufferGetHeight(pb)
             if let crop, let ring, crop.crops(width: w, height: h) {
@@ -224,20 +239,103 @@ public final class VideoSource {
             }
             return Frame(texture: mtl, presentationTime: pts, _retain: pb, cropped: nil)
         }
+
+        private func makePoolBuffer(width: Int, height: Int) -> CVPixelBuffer? {
+            if uprightPool == nil || uprightPoolSize != (width, height) {
+                var pool: CVPixelBufferPool?
+                let poolAttrs: [String: Any] = [
+                    kCVPixelBufferPoolMinimumBufferCountKey as String: Self.cropDepth,
+                ]
+                let pbAttrs: [String: Any] = [
+                    kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA,
+                    kCVPixelBufferWidthKey as String: width,
+                    kCVPixelBufferHeightKey as String: height,
+                    kCVPixelBufferMetalCompatibilityKey as String: true,
+                    kCVPixelBufferIOSurfacePropertiesKey as String: [:] as [String: Any],
+                ]
+                guard CVPixelBufferPoolCreate(nil, poolAttrs as CFDictionary,
+                                              pbAttrs as CFDictionary, &pool) == kCVReturnSuccess,
+                      let pool else { return nil }
+                uprightPool = pool
+                uprightPoolSize = (width, height)
+            }
+            guard let pool = uprightPool else { return nil }
+            var out: CVPixelBuffer?
+            guard CVPixelBufferPoolCreatePixelBuffer(nil, pool, &out) == kCVReturnSuccess else {
+                return nil
+            }
+            return out
+        }
+
+        private func uprightPixelBuffer(from rawPB: CVPixelBuffer) -> CVPixelBuffer? {
+            let srcW = CVPixelBufferGetWidth(rawPB)
+            let srcH = CVPixelBufferGetHeight(rawPB)
+            guard srcW > 0, srcH > 0 else { return nil }
+            let rawRect = CGRect(x: 0, y: 0, width: srcW, height: srcH)
+            let transformed = rawRect.applying(preferredTransform)
+            let dstW = max(1, Int(abs(transformed.width).rounded()))
+            let dstH = max(1, Int(abs(transformed.height).rounded()))
+            guard let dstPB = makePoolBuffer(width: dstW, height: dstH) else { return nil }
+
+            let forward = preferredTransform.concatenating(
+                CGAffineTransform(translationX: -transformed.minX, y: -transformed.minY)
+            )
+            let inv = forward.inverted()
+
+            CVPixelBufferLockBaseAddress(rawPB, .readOnly)
+            CVPixelBufferLockBaseAddress(dstPB, [])
+            defer {
+                CVPixelBufferUnlockBaseAddress(dstPB, [])
+                CVPixelBufferUnlockBaseAddress(rawPB, .readOnly)
+            }
+            guard let srcBase = CVPixelBufferGetBaseAddress(rawPB),
+                  let dstBase = CVPixelBufferGetBaseAddress(dstPB) else { return nil }
+            let srcRowBytes = CVPixelBufferGetBytesPerRow(rawPB)
+            let dstRowBytes = CVPixelBufferGetBytesPerRow(dstPB)
+
+            let stepX = Double(inv.a)
+            let stepY = Double(inv.b)
+            let maxSX = srcW - 1
+            let maxSY = srcH - 1
+
+            for dy in 0..<dstH {
+                let py = Double(dy) + 0.5
+                var sx = 0.5 * Double(inv.a) + py * Double(inv.c) + Double(inv.tx)
+                var sy = 0.5 * Double(inv.b) + py * Double(inv.d) + Double(inv.ty)
+                let dstRow = dstBase.advanced(by: dy * dstRowBytes).assumingMemoryBound(to: UInt32.self)
+                for dx in 0..<dstW {
+                    let ix = min(maxSX, max(0, Int(sx.rounded(.down))))
+                    let iy = min(maxSY, max(0, Int(sy.rounded(.down))))
+                    dstRow[dx] = srcBase.advanced(by: iy * srcRowBytes + ix * 4)
+                        .assumingMemoryBound(to: UInt32.self).pointee
+                    sx += stepX
+                    sy += stepY
+                }
+            }
+            return dstPB
+        }
     }
 
-    /// True when frames need the track's rotation applied. The sequential
-    /// reader hands back raw pixel buffers, so anything non-identity has to
-    /// go through the (much slower) image-generator path to stay upright.
+    /// True when frames carry a non-identity track rotation/flip.
     public var needsPreferredTransform: Bool {
-        videoTrack.preferredTransform != .identity
+        preferredTransform != .identity
     }
 
-    /// The frame size as displayed: the track's rotation applied, as the
-    /// image-generator path decodes it.
+    /// The frame size as displayed: the track's rotation applied.
     public var displaySize: CGSize {
-        let r = CGRect(origin: .zero, size: pixelSize).applying(videoTrack.preferredTransform)
+        let r = CGRect(origin: .zero, size: pixelSize).applying(preferredTransform)
         return CGSize(width: abs(r.width).rounded(), height: abs(r.height).rounded())
+    }
+
+    /// Upright pixel dimensions after applying optional `crop`.
+    public func effectivePixelSize(crop: SourceCrop? = nil) -> (width: Int, height: Int) {
+        let w = max(1, Int(displaySize.width.rounded()))
+        let h = max(1, Int(displaySize.height.rounded()))
+        if let crop {
+            let r = crop.rect(width: w, height: h)
+            return (r.width, r.height)
+        }
+        return (w, h)
     }
 
     /// Sequential reader positioned at a frame — the playback path.
@@ -274,6 +372,7 @@ public final class VideoSource {
         }
         reader.add(output)
         return SequentialReader(reader: reader, output: output,
-                                device: device, textureCache: textureCache, crop: crop)
+                                device: device, textureCache: textureCache,
+                                preferredTransform: preferredTransform, crop: crop)
     }
 }

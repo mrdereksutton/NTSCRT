@@ -27,7 +27,10 @@ NS_ASSUME_NONNULL_BEGIN
 + (nullable NSString *)settingsDescriptorsJSON;
 
 /// New filter with ntsc-rs default settings. nil if the library isn't loaded.
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wnullability"
 - (nullable instancetype)init;
+#pragma clang diagnostic pop
 
 /// Current settings as preset JSON.
 - (nullable NSString *)settingsJSON;

@@ -32,6 +32,16 @@ public struct DownscaleSpec: Equatable, Sendable {
 /// pipeline.
 public final class Pipeline {
 
+    public enum Error: Swift.Error, LocalizedError {
+        case downscaleTextureAlloc(width: Int, height: Int)
+        public var errorDescription: String? {
+            switch self {
+            case .downscaleTextureAlloc(let w, let h):
+                return "downscale texture allocation failed (\(w) × \(h))"
+            }
+        }
+    }
+
     public let context: MetalContext
     private var downscaleCache: (spec: DownscaleSpec, texture: MTLTexture)?
 
@@ -51,7 +61,7 @@ public final class Pipeline {
                        frameCount: Int) throws -> MTLTexture {
         let chainInput: MTLTexture
         if let spec = downscale {
-            let scratch = obtainDownscaleTexture(for: spec, sourceFormat: inputTexture.pixelFormat)
+            let scratch = try obtainDownscaleTexture(for: spec, sourceFormat: inputTexture.pixelFormat)
             context.downscaler.encode(into: commandBuffer,
                                       source: inputTexture,
                                       destination: scratch,
@@ -108,7 +118,7 @@ public final class Pipeline {
         guard let cb = context.queue.makeCommandBuffer() else {
             throw NtscStage.Error.commandBuffer
         }
-        let scratch = obtainDownscaleTexture(for: spec, sourceFormat: processed.pixelFormat)
+        let scratch = try obtainDownscaleTexture(for: spec, sourceFormat: processed.pixelFormat)
         context.downscaler.encode(into: cb, source: processed,
                                   destination: scratch, method: spec.method)
         cb.commit()
@@ -144,19 +154,25 @@ public final class Pipeline {
     }
 
     private func obtainDownscaleTexture(for spec: DownscaleSpec,
-                                        sourceFormat: MTLPixelFormat) -> MTLTexture {
-        if let cached = downscaleCache, cached.spec == spec,
+                                        sourceFormat: MTLPixelFormat) throws -> MTLTexture {
+        let clamped = DownscaleSpec(width: max(1, spec.width),
+                                    height: max(1, spec.height),
+                                    method: spec.method,
+                                    lineHeight: spec.lineHeight)
+        if let cached = downscaleCache, cached.spec == clamped,
            cached.texture.pixelFormat == sourceFormat {
             return cached.texture
         }
         let d = MTLTextureDescriptor.texture2DDescriptor(
             pixelFormat: sourceFormat,
-            width: spec.width, height: spec.height, mipmapped: false
+            width: clamped.width, height: clamped.height, mipmapped: false
         )
         d.usage = [.shaderRead, .shaderWrite]
         d.storageMode = .private
-        let tex = context.device.makeTexture(descriptor: d)!
-        downscaleCache = (spec, tex)
+        guard let tex = context.device.makeTexture(descriptor: d) else {
+            throw Error.downscaleTextureAlloc(width: clamped.width, height: clamped.height)
+        }
+        downscaleCache = (clamped, tex)
         return tex
     }
 }

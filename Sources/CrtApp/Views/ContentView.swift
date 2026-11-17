@@ -270,7 +270,7 @@ struct ContentView: View {
                 else { print("GALLERY FAIL \(f.id)"); continue }
                 blit.copy(from: out, to: staging)
                 if staging.storageMode == .managed { blit.synchronize(resource: staging) }
-                blit.endEncoding(); cb.commit(); cb.waitUntilCompleted()
+                blit.endEncoding(); cb.commit(); await cb.completed()
                 if let cg = try? makeCGImage(from: staging) {
                     try? writePNG(cg, to: folder.appendingPathComponent("\(f.id).png"))
                     print("GALLERY \(f.id) \(out.width)x\(out.height)")
@@ -2026,7 +2026,7 @@ struct ContentView: View {
                     },
                     progress: { _ in })
                 let bytes = (try? FileManager.default.attributesOfItem(atPath: out)[.size] as? Int) ?? 0
-                check("keyframed video export wrote a file", (bytes ?? 0) > 10_000, "\(bytes ?? 0) bytes")
+                check("keyframed video export wrote a file", bytes > 10_000, "\(bytes) bytes")
             } catch {
                 check("keyframed video export", false, "\(error)")
             }
@@ -2368,7 +2368,7 @@ struct ContentView: View {
                     source: vs, paramValues: state.paramValues,
                     settings: settings, ntscSettingsJSON: ntscJSON, progress: { _ in })
                 let bytes = (try? FileManager.default.attributesOfItem(atPath: out.path)[.size] as? Int) ?? 0
-                print("GIF_SELFTEST video \(w)x\(h) fps=\(state.gifFPS) bytes=\(bytes ?? 0)")
+                print("GIF_SELFTEST video \(w)x\(h) fps=\(state.gifFPS) bytes=\(bytes)")
                 exit(0)
             }
             try await GifExporter(context: state.context).exportStill(
@@ -2376,15 +2376,15 @@ struct ContentView: View {
                 paramValues: state.paramValues, settings: settings,
                 ntscSettingsJSON: ntscJSON,
                 frameParams: ev.map { e in
-                    { i, n in
+                    { @Sendable i, n in
                         let t = n > 1 ? Double(i) / Double(n - 1) : 0
                         return (shader: e.shaderParams(at: t), ntscJSON: e.ntscJSON(at: t), glitch: nil)
                     }
                 },
                 progress: { _ in })
             let bytes = (try? FileManager.default.attributesOfItem(atPath: out.path)[.size] as? Int) ?? 0
-            let bpf = Double(bytes ?? 0) / Double(w * h * frames)
-            print("GIF_SELFTEST \(w)x\(h) frames=\(frames) fps=\(state.gifFPS) bytes=\(bytes ?? 0) bytesPerPxPerFrame=\(String(format: "%.3f", bpf))")
+            let bpf = Double(bytes) / Double(w * h * frames)
+            print("GIF_SELFTEST \(w)x\(h) frames=\(frames) fps=\(state.gifFPS) bytes=\(bytes) bytesPerPxPerFrame=\(String(format: "%.3f", bpf))")
             // Sanity-check the supersample rule across regimes.
             for (inH, tgtH) in [(240, 404), (416, 702), (240, 1080), (2160, 702), (1080, 540)] {
                 let k = ScanlineGrid.supersampleFactor(inputHeight: inH, targetHeight: tgtH)

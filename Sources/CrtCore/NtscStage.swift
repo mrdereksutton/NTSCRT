@@ -36,12 +36,8 @@ public final class NtscStage {
         }
     }
 
-    /// Testing hook: CRT_FORCE_MANAGED=1 exercises the discrete-GPU path on
-    /// unified-memory machines (managed storage is valid everywhere).
-    static let forceManaged = ProcessInfo.processInfo.environment["CRT_FORCE_MANAGED"] != nil
-
     static func cpuStorageMode(for device: MTLDevice) -> MTLStorageMode {
-        (device.hasUnifiedMemory && !forceManaged) ? .shared : .managed
+        CrtCore.cpuStorageMode(for: device)
     }
 
     private let filter: NTSCFilter

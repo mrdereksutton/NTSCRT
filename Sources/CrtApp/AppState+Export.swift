@@ -89,7 +89,7 @@ extension AppState {
             // GIFs loop forever by themselves, so the animation spans the
             // whole file rather than repeating in passes.
             let frameParams: FrameParams? = evaluator.map { ev in
-                { i, total in
+                { @Sendable i, total in
                     let t = total > 1 ? Double(i) / Double(total - 1) : 0
                     return (shader: ev.shaderParams(at: t), ntscJSON: ev.ntscJSON(at: t),
                             glitch: ev.glitchSettings(at: t, base: glitchBase, receptionOn: receptionOn))
@@ -123,7 +123,7 @@ extension AppState {
             // Keyframes drive per-frame parameters; without keys the params
             // hold and only the frame-seeded VHS noise animates.
             let frameParams: FrameParams? = evaluator.map { ev in
-                { i, _ in
+                { @Sendable i, _ in
                     // Phase within the pass, so each loop replays the
                     // animation instead of stretching it across all passes.
                     let within = i % baseFrames
@@ -162,7 +162,7 @@ extension AppState {
                 var detail = "\(r.width) × \(r.height)"
                 if movieRoute == .gif {
                     let bytes = (try? FileManager.default.attributesOfItem(atPath: url.path)[.size] as? Int) ?? 0
-                    detail += ", " + ByteCountFormatter.string(fromByteCount: Int64(bytes ?? 0), countStyle: .file)
+                    detail += ", " + ByteCountFormatter.string(fromByteCount: Int64(bytes), countStyle: .file)
                 }
                 exportStatus = "Wrote \(url.lastPathComponent) (\(detail))"
                 exportProgress = 1

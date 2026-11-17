@@ -186,6 +186,11 @@ public final class Mp4Exporter {
             AVVideoCodecKey: settings.codec.avCodec,
             AVVideoWidthKey: settings.outputWidth,
             AVVideoHeightKey: settings.outputHeight,
+            AVVideoColorPropertiesKey: [
+                AVVideoColorPrimariesKey: AVVideoColorPrimaries_ITU_R_709_2,
+                AVVideoTransferFunctionKey: AVVideoTransferFunction_ITU_R_709_2,
+                AVVideoYCbCrMatrixKey: AVVideoYCbCrMatrix_ITU_R_709_2,
+            ],
         ]
         if !settings.codec.isProRes {
             let bitrate = settings.averageBitrate
@@ -246,11 +251,19 @@ public final class Mp4Exporter {
             let aOut = AVAssetReaderTrackOutput(track: audioTrack, outputSettings: lpcmSettings)
             if aReader.canAdd(aOut) { aReader.add(aOut) }
 
-            let audioOutSettings: [String: Any] = [
-                AVFormatIDKey: kAudioFormatMPEG4AAC,
-                AVSampleRateKey: 44100,
+            let audioOutSettings: [String: Any] = settings.codec.isProRes ? [
+                AVFormatIDKey: kAudioFormatLinearPCM,
+                AVSampleRateKey: 48_000,
                 AVNumberOfChannelsKey: 2,
-                AVEncoderBitRateKey: 128_000,
+                AVLinearPCMBitDepthKey: 16,
+                AVLinearPCMIsFloatKey: false,
+                AVLinearPCMIsBigEndianKey: false,
+                AVLinearPCMIsNonInterleaved: false,
+            ] : [
+                AVFormatIDKey: kAudioFormatMPEG4AAC,
+                AVSampleRateKey: 48_000,
+                AVNumberOfChannelsKey: 2,
+                AVEncoderBitRateKey: 192_000,
             ]
             let aIn = AVAssetWriterInput(mediaType: .audio, outputSettings: audioOutSettings)
             aIn.expectsMediaDataInRealTime = false
@@ -275,8 +288,9 @@ public final class Mp4Exporter {
         var frameIndex = 0
 
         // Guard against scanline banding at small output sizes (ScanlineGrid).
-        let chainInput = ScanlineGrid.chainInputSize(width: Int(source.pixelSize.width),
-                                                    height: Int(source.pixelSize.height),
+        let srcSize = source.effectivePixelSize(crop: settings.crop)
+        let chainInput = ScanlineGrid.chainInputSize(width: srcSize.width,
+                                                    height: srcSize.height,
                                                     downscale: settings.downscale)
         // (Only the shader draws scanlines, so only it needs supersampling.)
         let supersample = settings.shaderEnabled
@@ -289,7 +303,7 @@ public final class Mp4Exporter {
                                shaderEnabled: settings.shaderEnabled, paramValues: paramValues,
                                chainInputSize: chainInput)
         }
-        let aspect = Double(source.pixelSize.width) / Double(max(1, source.pixelSize.height))
+        let aspect = Double(srcSize.width) / Double(max(1, srcSize.height))
 
         // Render target reused across frames (private).
         guard let target = makeRenderTarget(device: context.device,
@@ -318,7 +332,7 @@ public final class Mp4Exporter {
             var ranUp = false
             while true {
                 if !videoInput.isReadyForMoreMediaData {
-                    Thread.sleep(forTimeInterval: 0.005)
+                    try await Task.sleep(for: .milliseconds(5))
                     continue
                 }
                 if howl?.isCancelled == true { throw CancellationError() }
@@ -420,7 +434,7 @@ public final class Mp4Exporter {
                           destinationOrigin: MTLOrigin(x: 0, y: 0, z: 0))
                 blit.endEncoding()
                 cb.commit()
-                cb.waitUntilCompleted()
+                await cb.completed()
                 howl?.advance()
 
                 let pts = pass == 0
@@ -453,7 +467,7 @@ public final class Mp4Exporter {
                         var pass = 0
                         while true {
                             if !audioInput.isReadyForMoreMediaData {
-                                Thread.sleep(forTimeInterval: 0.005)
+                                try await Task.sleep(for: .milliseconds(5))
                                 continue
                             }
                             if let sb = output.copyNextSampleBuffer() {
@@ -547,6 +561,11 @@ public final class Mp4Exporter {
             AVVideoCodecKey: settings.codec.avCodec,
             AVVideoWidthKey: settings.outputWidth,
             AVVideoHeightKey: settings.outputHeight,
+            AVVideoColorPropertiesKey: [
+                AVVideoColorPrimariesKey: AVVideoColorPrimaries_ITU_R_709_2,
+                AVVideoTransferFunctionKey: AVVideoTransferFunction_ITU_R_709_2,
+                AVVideoYCbCrMatrixKey: AVVideoYCbCrMatrix_ITU_R_709_2,
+            ],
         ]
         if !settings.codec.isProRes {
             let bitrate = settings.averageBitrate
@@ -621,7 +640,7 @@ public final class Mp4Exporter {
             }
             for frameIndex in 0..<totalFrames {
                 while !videoInput.isReadyForMoreMediaData {
-                    Thread.sleep(forTimeInterval: 0.005)
+                    try await Task.sleep(for: .milliseconds(5))
                 }
                 if howl?.isCancelled == true { throw CancellationError() }
 
@@ -688,7 +707,7 @@ public final class Mp4Exporter {
                           destinationOrigin: MTLOrigin(x: 0, y: 0, z: 0))
                 blit.endEncoding()
                 cb.commit()
-                cb.waitUntilCompleted()
+                await cb.completed()
 
                 howl?.advance()
 

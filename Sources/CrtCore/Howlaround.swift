@@ -654,7 +654,7 @@ public final class HowlaroundLoop: @unchecked Sendable {
             let d = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .rgba32Float, width: 1,
                                                              height: 1, mipmapped: false)
             d.usage = [.shaderRead, .shaderWrite]
-            d.storageMode = device.hasUnifiedMemory ? .shared : .managed
+            d.storageMode = cpuStorageMode(for: device)
             guard let t = device.makeTexture(descriptor: d) else { throw Self.error("mean texture") }
             return t
         }
@@ -772,7 +772,7 @@ public final class HowlaroundLoop: @unchecked Sendable {
         if s["auto_exposure"] > 0 {
             mean.encode(commandBuffer: cb, sourceTexture: camera, destinationTexture: meanCamera)
             mean.encode(commandBuffer: cb, sourceTexture: scene, destinationTexture: meanScene)
-            if !device.hasUnifiedMemory, let blit = cb.makeBlitCommandEncoder() {
+            if meanCamera.storageMode == .managed, let blit = cb.makeBlitCommandEncoder() {
                 blit.synchronize(resource: meanCamera)
                 blit.synchronize(resource: meanScene)
                 blit.endEncoding()

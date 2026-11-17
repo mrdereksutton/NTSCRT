@@ -279,7 +279,7 @@ enum RenderCommand {
                                time: Double? = nil) -> [String: Any] {
         var o: [String: Any] = ["path": url.path, "width": w, "height": h]
         let bytes = (try? FileManager.default.attributesOfItem(atPath: url.path)[.size] as? Int) ?? 0
-        o["bytes"] = bytes ?? 0
+        o["bytes"] = bytes
         if let frames, let fps {
             o["frames"] = frames
             o["seconds"] = CLI.decimal(Double(frames) / max(1, fps))

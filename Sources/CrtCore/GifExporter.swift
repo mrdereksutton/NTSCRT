@@ -157,12 +157,13 @@ public final class GifExporter {
         let sourceFrames = source.totalFrames
         let outFrames = max(1, Int((Double(sourceFrames) / step).rounded(.down)))
 
+        let srcSize = source.effectivePixelSize(crop: settings.crop)
         let ctx = try Context(exporter: self, settings: settings,
                               paramValues: paramValues, ntscSettingsJSON: ntscSettingsJSON,
                               frameCount: outFrames,
                               chainInputSize: Self.chainInputSize(
-                                  width: Int(source.pixelSize.width),
-                                  height: Int(source.pixelSize.height),
+                                  width: srcSize.width,
+                                  height: srcSize.height,
                                   downscale: settings.downscale))
         let reader = try source.makeSequentialReader(crop: settings.crop)
         ctx.clipFrames = settings.digital.map { _ in DigitalClipFrames(source: source, crop: settings.crop) }

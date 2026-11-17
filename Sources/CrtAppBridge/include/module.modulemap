@@ -1,4 +1,6 @@
 module CrtAppBridge {
     umbrella header "LibrashaderBridge.h"
+    exclude header "librashader.h"
+    exclude header "librashader_ld.h"
     export *
 }

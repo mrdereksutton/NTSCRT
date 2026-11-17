@@ -40,8 +40,13 @@ fi
 # here: without them, rewrapping underneath it broke its next export
 # ("preset_create … No such file", 2026-10-05). Launched from this bundle,
 # the dev build still prefers CRT_PRESETS below — the live Vendor tree.
-mkdir -p "$APP/Contents/Resources/slang-shaders"
+mkdir -p "$APP/Contents/Resources/slang-shaders/blurs/shaders"
 cp -R Vendor/slang-shaders/crt Vendor/slang-shaders/include "$APP/Contents/Resources/slang-shaders/"
+cp -R Vendor/slang-shaders/blurs/shaders/royale "$APP/Contents/Resources/slang-shaders/blurs/shaders/"
+if [[ -d TestAssets ]]; then
+  mkdir -p "$APP/Contents/Resources/TestAssets"
+  cp TestAssets/*.png "$APP/Contents/Resources/TestAssets/" 2>/dev/null || true
+fi
 # Licenses: the app's own (MIT) and the notices the bundled libraries and
 # shaders require to travel with binary copies (THIRD_PARTY_NOTICES.md).
 cp LICENSE THIRD_PARTY_NOTICES.md "$APP/Contents/Resources/"

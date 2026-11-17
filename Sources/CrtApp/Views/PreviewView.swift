@@ -418,14 +418,14 @@ struct PreviewView: NSViewRepresentable {
         /// tests drive the very same code (see PreviewCompositorTests).
         private lazy var compositor = PreviewCompositor(context: state.context)
 
-        private func makeTarget(width: Int, height: Int) -> MTLTexture {
+        private func makeTarget(width: Int, height: Int) -> MTLTexture? {
             let d = MTLTextureDescriptor.texture2DDescriptor(
                 pixelFormat: .bgra8Unorm,
-                width: width, height: height, mipmapped: false
+                width: max(1, width), height: max(1, height), mipmapped: false
             )
             d.usage = [.renderTarget, .shaderRead, .shaderWrite]
             d.storageMode = .private
-            return state.context.device.makeTexture(descriptor: d)!
+            return state.context.device.makeTexture(descriptor: d)
         }
 
         // MARK: - render with/without shader into a target

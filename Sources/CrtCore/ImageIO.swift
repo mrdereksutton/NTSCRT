@@ -98,8 +98,8 @@ public func makeStagingTexture(device: MTLDevice, width: Int, height: Int) -> MT
         pixelFormat: .bgra8Unorm, width: width, height: height, mipmapped: false
     )
     d.usage = [.shaderRead]
-    // Discrete-GPU Macs need .managed (+ a synchronize blit after GPU writes)
-    // for the CPU to see the result; .shared is only coherent on unified memory.
-    d.storageMode = device.hasUnifiedMemory ? .shared : .managed
+    // Discrete and Intel GPUs need .managed (+ a synchronize blit after GPU writes)
+    // for the CPU to see the result; .shared is used strictly on Apple Silicon.
+    d.storageMode = cpuStorageMode(for: device)
     return device.makeTexture(descriptor: d)
 }

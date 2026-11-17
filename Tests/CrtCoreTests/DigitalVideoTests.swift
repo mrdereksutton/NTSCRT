@@ -353,16 +353,20 @@ final class DigitalVideoTests: XCTestCase {
     }
 
     func testPictureControlsAreNeutralByDefault() {
-        let px = frame(0)
+        var px = frame(0)
         // (Fields default to One field — the stage's look, not neutral —
         // so they're set to Progressive here.)
-        var small = DigitalVideoRenderer.scale(UnsafeMutableRawPointer(mutating: px), width: size.width,
-                                               height: size.height, rowBytes: size.width * 4,
-                                               to: capture, optics: DigitalSettings(values: ["fields": 0]))
+        var small = px.withUnsafeMutableBytes {
+            DigitalVideoRenderer.scale($0.baseAddress!, width: size.width,
+                                       height: size.height, rowBytes: size.width * 4,
+                                       to: capture, optics: DigitalSettings(values: ["fields": 0]))
+        }
         let viaVImage = small
-        small = DigitalVideoRenderer.scale(UnsafeMutableRawPointer(mutating: px), width: size.width,
-                                           height: size.height, rowBytes: size.width * 4, to: capture,
-                                           optics: DigitalSettings(values: ["aliasing": 0, "fields": 0]))
+        small = px.withUnsafeMutableBytes {
+            DigitalVideoRenderer.scale($0.baseAddress!, width: size.width,
+                                       height: size.height, rowBytes: size.width * 4, to: capture,
+                                       optics: DigitalSettings(values: ["aliasing": 0, "fields": 0]))
+        }
         XCTAssertTrue(small == viaVImage)
         let a = camera(small, capture.width, capture.height, [:])
         let b = camera(small, capture.width, capture.height, ["ccd_response": 0, "white_balance": 0, "tint": 0,
@@ -507,9 +511,12 @@ final class DigitalVideoTests: XCTestCase {
     }
 
     func sampled(_ px: [UInt8], _ aliasing: Double, w: Int = 640, h: Int = 64) -> [UInt8] {
-        DigitalVideoRenderer.scale(UnsafeMutableRawPointer(mutating: px), width: w, height: h,
-                                   rowBytes: w * 4, to: (160, 16),
-                                   optics: DigitalSettings(values: ["aliasing": aliasing]))
+        var buf = px
+        return buf.withUnsafeMutableBytes {
+            DigitalVideoRenderer.scale($0.baseAddress!, width: w, height: h,
+                                       rowBytes: w * 4, to: (160, 16),
+                                       optics: DigitalSettings(values: ["aliasing": aliasing]))
+        }
     }
 
     func testAliasingTurnsFineStripesIntoFalseColor() {
@@ -545,9 +552,12 @@ final class DigitalVideoTests: XCTestCase {
     }
 
     func testOneFieldDoublesEveryOtherLine() {
-        let small = DigitalVideoRenderer.scale(UnsafeMutableRawPointer(mutating: frame(3)), width: size.width,
-                                               height: size.height, rowBytes: size.width * 4, to: capture,
-                                               optics: DigitalSettings(values: ["fields": 1]))
+        var px = frame(3)
+        let small = px.withUnsafeMutableBytes {
+            DigitalVideoRenderer.scale($0.baseAddress!, width: size.width,
+                                       height: size.height, rowBytes: size.width * 4, to: capture,
+                                       optics: DigitalSettings(values: ["fields": 1]))
+        }
         let rowBytes = capture.width * 4
         for y in stride(from: 0, to: capture.height - 1, by: 2) {
             XCTAssertTrue(small[(y * rowBytes)..<((y + 1) * rowBytes)] == small[((y + 1) * rowBytes)..<((y + 2) * rowBytes)])
