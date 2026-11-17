@@ -232,6 +232,17 @@ struct PreviewView: NSViewRepresentable {
 
                 var allRendered = true
 
+                // Bypass mode (`\`): render clean original source directly.
+                if state.bypassAllStages {
+                    do {
+                        try renderState(false, source: source,
+                                        downscale: nil, into: primary, cb: cb)
+                        lastRenderedChainTick = tick
+                    } catch {
+                        lastRenderedChainTick = nil
+                        clearAndPresent(drawable: drawable, cb: cb); return
+                    }
+                } else {
                 // CPU stages (Digital video, then ntsc-rs): synchronously
                 // produce the degraded chain input (CPU effects + downscale);
                 // both compare sides then consume it with no further
@@ -312,6 +323,7 @@ struct PreviewView: NSViewRepresentable {
                 }
 
                 lastRenderedChainTick = allRendered ? tick : nil
+                }
             } else if Self.perfLog {
                 fputs("[perf] composite only (tick \(tick))\n", stderr)
             }

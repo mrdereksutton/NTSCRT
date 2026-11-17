@@ -10,15 +10,15 @@ struct ShaderPanel: View {
     var body: some View {
         @Bindable var state = state
         VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Twirl(expanded: $panelExpanded)
-                Text("CRT").font(.headline)
-                Spacer()
-                Toggle("", isOn: $state.shaderEnabled)
-                    .toggleStyle(.switch)
-                    .labelsHidden()
-                    .help("Enable/disable the CRT shader. Off shows the (optionally-downscaled) source.")
-            }
+            StageHeader(
+                stepNumber: 7,
+                title: "CRT",
+                expanded: $panelExpanded,
+                summary: state.shaderSummary,
+                isModified: state.isShaderModified,
+                toggleBinding: $state.shaderEnabled,
+                toggleHelp: "Enable/disable the CRT display shader."
+            )
 
             if panelExpanded {
                 shaderConfig
@@ -27,6 +27,9 @@ struct ShaderPanel: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        .onChange(of: state.shaderEnabled) { _, on in
+            if !state.expandAllPanelsForTesting { panelExpanded = on }
+        }
     }
 
     /// Contiguous run of parameters under one shader-declared section header
@@ -91,10 +94,10 @@ struct ShaderPanel: View {
             }
 
             HStack {
-                Text("Parameters (\(state.paramDescriptors.count))")
+                Text("Shader controls")
                     .font(.subheadline).foregroundStyle(.secondary)
                 Spacer()
-                Button("Reset") { resetAll() }
+                Button("Reset") { state.resetShader(allCachedShaders: false) }
                     .buttonStyle(.borderless)
                     .disabled(state.paramDescriptors.isEmpty)
             }
@@ -105,16 +108,23 @@ struct ShaderPanel: View {
             }
             ForEach(split.sections) { section in
                 let expanded = Binding(
-                    get: { expandedSections[section.id, default: true] },
+                    get: { expandedSections[section.id, default: state.expandAllPanelsForTesting] },
                     set: { expandedSections[section.id] = $0 }
                 )
                 VStack(alignment: .leading, spacing: 8) {
                     HStack(spacing: 4) {
                         Twirl(expanded: expanded)
                         Text(section.title)
-                            .font(.caption)
+                            .font(.caption.weight(.semibold))
                             .foregroundStyle(.secondary)
                             .lineLimit(1)
+                        Spacer(minLength: 0)
+                    }
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        var t = Transaction()
+                        t.disablesAnimations = true
+                        withTransaction(t) { expanded.wrappedValue.toggle() }
                     }
                     .padding(.top, 4)
                     if expanded.wrappedValue {

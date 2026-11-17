@@ -14,17 +14,24 @@ struct CropPanel: View {
     var body: some View {
         @Bindable var state = state
         VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Twirl(expanded: $expanded)
-                Toggle("Crop", isOn: $state.cropEnabled)
-                    .font(.headline)
-                    .help("Crop the picture to an aspect ratio before anything else in the chain sees it.")
-            }
+            StageHeader(
+                stepNumber: 1,
+                title: "Crop",
+                expanded: $expanded,
+                summary: state.cropSummary,
+                isModified: state.isCropModified,
+                toggleBinding: $state.cropEnabled,
+                toggleHelp: "Crop the picture to an aspect ratio before anything else in the chain sees it."
+            )
 
             if expanded {
                 HStack {
                     Text("Aspect ratio").font(.subheadline).foregroundStyle(.secondary)
                     Spacer()
+                    if state.isCropModified {
+                        Button("Reset") { state.resetCrop() }
+                            .buttonStyle(.borderless)
+                    }
                     Text(state.cropEnabled ? "\(state.cropRatio.width) : \(state.cropRatio.height)" : "Off")
                         .font(.system(.callout, design: .monospaced))
                 }
@@ -43,6 +50,9 @@ struct CropPanel: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        .onChange(of: state.cropEnabled) { _, on in
+            if on { expanded = true }
+        }
     }
 
     // MARK: ratios

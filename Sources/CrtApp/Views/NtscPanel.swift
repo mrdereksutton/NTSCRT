@@ -12,17 +12,15 @@ struct NtscPanel: View {
     var body: some View {
         @Bindable var state = state
         VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Twirl(expanded: $panelExpanded)
-                Text("NTSC (TV)").font(.headline)
-                Spacer()
-                if state.ntscAvailable {
-                    Toggle("", isOn: $state.ntscEnabled)
-                        .toggleStyle(.switch)
-                        .labelsHidden()
-                        .help("Emulate the analog signal path (composite artifacts, tape noise) before the CRT shader. Turn on Animate in the palette over the preview to see noise, jitter, and tracking move.")
-                }
-            }
+            StageHeader(
+                stepNumber: 3,
+                title: "NTSC (TV)",
+                expanded: $panelExpanded,
+                summary: state.ntscEnabled ? "Composite" : "Off",
+                isModified: state.isNtscModified,
+                toggleBinding: state.ntscAvailable ? $state.ntscEnabled : nil,
+                toggleHelp: "Emulate the analog composite signal path before downscaling and the CRT shader."
+            )
 
             if !state.ntscAvailable {
                 Text("ntscrs_capi.dylib not found — build it with scripts/build-ntscrs.sh (see README).")
@@ -38,6 +36,9 @@ struct NtscPanel: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        .onChange(of: state.ntscEnabled) { _, on in
+            if !state.expandAllPanelsForTesting { panelExpanded = on }
+        }
     }
 
     private var shown: [NtscSetting] {
@@ -52,7 +53,7 @@ struct NtscPanel: View {
     @ViewBuilder
     private var settingsBody: some View {
         HStack {
-            Text("Settings (\(shown.count) top-level)")
+            Text("Composite signal")
                 .font(.subheadline).foregroundStyle(.secondary)
             Spacer()
             Button("Reset") { state.resetNtsc() }
@@ -86,9 +87,17 @@ private struct NtscControl: View {
     @Environment(AppState.self) private var state
     let setting: NtscSetting
     let depth: Int
-    @State private var groupExpanded = true
+    @State private var groupExpanded = false
 
     var body: some View {
+        Group { content }
+            .onAppear {
+                if state.expandAllPanelsForTesting { groupExpanded = true }
+            }
+    }
+
+    @ViewBuilder
+    private var content: some View {
         switch setting.kind {
         case .boolean:
             Toggle(isOn: boolBinding) {

@@ -49,6 +49,33 @@ struct CrtAppApp: App {
                 Divider()
                 ConnectClaudeMenuItem()
             }
+            CommandGroup(replacing: .undoRedo) {
+                Button("Undo") { appState?.undoLook() }
+                    .keyboardShortcut("z", modifiers: .command)
+                    .disabled(!(appState?.lookUndoManager.canUndo ?? false))
+                Button("Redo") { appState?.redoLook() }
+                    .keyboardShortcut("z", modifiers: [.command, .shift])
+                    .disabled(!(appState?.lookUndoManager.canRedo ?? false))
+            }
+            CommandMenu("Look") {
+                Button("Reset Look") { appState?.resetAll() }
+                    .keyboardShortcut("r", modifiers: [.command, .option])
+                    .disabled(appState == nil)
+                Divider()
+                Button("Toggle Bypass All Effects") { appState?.bypassAllStages.toggle() }
+                    .keyboardShortcut("\\", modifiers: [])
+                    .disabled(appState == nil)
+                Button("Toggle Compare Split") { appState?.compareEnabled.toggle() }
+                    .keyboardShortcut("c", modifiers: [.command, .shift])
+                    .disabled(appState == nil)
+                Button("Toggle Integer Scale") { appState?.integerScale.toggle() }
+                    .keyboardShortcut("i", modifiers: [.command, .shift])
+                    .disabled(appState == nil)
+                Divider()
+                Button("Fit Preview to Window") { appState?.resetView() }
+                    .keyboardShortcut("0", modifiers: .command)
+                    .disabled(appState == nil)
+            }
         }
 
         Window("Connect to Claude", id: ConnectClaudeMenuItem.windowID) {

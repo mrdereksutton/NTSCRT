@@ -11,21 +11,43 @@ struct DigitalVideoPanel: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Twirl(expanded: $panelExpanded)
-                Text("Digital video").font(.headline)
-                Spacer()
-                Toggle("", isOn: Binding(get: { state.digitalEnabled },
-                                         set: { on in
-                                             state.setDigitalEnabled(on)
-                                             if on { panelExpanded = true }
-                                         }))
-                    .toggleStyle(.switch)
-                    .labelsHidden()
-                    .help("Record the picture with a digital camera and codec before it goes out as an analog signal. Ready-made formats — webcam, video call, MiniDV and more — are in the toolbar's Preset menu, and also set the Downscale resolution.")
-            }
+            StageHeader(
+                stepNumber: 2,
+                title: "Digital video",
+                expanded: $panelExpanded,
+                summary: state.digitalSummary,
+                isModified: state.isDigitalModified,
+                toggleBinding: Binding(
+                    get: { state.digitalEnabled },
+                    set: { on in
+                        state.setDigitalEnabled(on)
+                        panelExpanded = on
+                    }
+                ),
+                toggleHelp: "Record the picture with an early digital camera and codec before composite/CRT."
+            )
             if panelExpanded {
                 Group {
+                    HStack {
+                        Text("Format").font(.subheadline).foregroundStyle(.secondary)
+                        Spacer()
+                        Menu {
+                            ForEach(DigitalFormat.all) { f in
+                                Button(f.name) {
+                                    state.performUndoable("Apply \(f.name) Format") {
+                                        state.applyDigitalFormat(f)
+                                        state.setDigitalEnabled(true)
+                                    }
+                                }
+                                .help(f.blurb)
+                            }
+                        } label: {
+                            Text(state.digitalFormat?.name ?? "Custom")
+                        }
+                        .fixedSize()
+                        Button("Reset") { state.resetDigital() }
+                            .buttonStyle(.borderless)
+                    }
                     ForEach(DigitalParam.Group.allCases, id: \.self) { group in
                         DigitalGroup(group: group)
                     }
@@ -35,9 +57,8 @@ struct DigitalVideoPanel: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .onAppear { panelExpanded = state.digitalEnabled }
-        // Switched on from the Preset menu (or a look): show it.
-        .onChange(of: state.digitalEnabled) { _, on in if on { panelExpanded = true } }
+        .onAppear { panelExpanded = state.digitalEnabled || state.expandAllPanelsForTesting }
+        .onChange(of: state.digitalEnabled) { _, on in panelExpanded = on }
     }
 }
 

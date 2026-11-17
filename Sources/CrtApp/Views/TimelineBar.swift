@@ -75,6 +75,36 @@ struct TimelineBar: View {
                 .tooltip("Delete the selected keyframe")
             }
 
+            if !state.timelineKeys.isEmpty {
+                Button {
+                    state.closeTimelineLoop()
+                } label: {
+                    Label("Make Loop", systemImage: "repeat")
+                        .font(.system(size: 11))
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .tooltip("Copy the starting keyframe to the end so looped exports match seamlessly.")
+
+                Toggle(isOn: $state.propagateEditsToAllKeys) {
+                    Text("Edit All")
+                        .font(.system(size: 11))
+                }
+                .toggleStyle(.button)
+                .controlSize(.small)
+                .tooltip("Apply parameter tweaks across every keyframe at once instead of only the playhead.")
+
+                Button(role: .destructive) {
+                    state.clearTimelineKeys()
+                    selectedKey = nil
+                } label: {
+                    Text("Clear")
+                        .font(.system(size: 11))
+                }
+                .buttonStyle(.borderless)
+                .tooltip("Remove all keyframes from the timeline.")
+            }
+
             Spacer()
 
             Text(String(format: "%.2f s", state.playheadT * state.effectiveTimelineDuration))

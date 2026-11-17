@@ -7,20 +7,20 @@ import CrtCore
 /// circuits respond, so they combine and interact the way real ones did.
 struct GlitchPanel: View {
     @Environment(AppState.self) private var state
-    @State private var panelExpanded = true
+    @State private var panelExpanded = false
 
     var body: some View {
         @Bindable var state = state
         VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Twirl(expanded: $panelExpanded)
-                Text("Glitch").font(.headline)
-                Spacer()
-                Toggle("", isOn: $state.glitchEnabled)
-                    .toggleStyle(.switch)
-                    .labelsHidden()
-                    .help("Simulate the TV's sync circuits and the signal reaching it. Every knob starts at a healthy set on a clean signal — turn one to break it. Turn on Animate in the palette to see it move.")
-            }
+            StageHeader(
+                stepNumber: 6,
+                title: "Glitch",
+                expanded: $panelExpanded,
+                summary: state.glitchSummary,
+                isModified: state.isGlitchReceptionActive,
+                toggleBinding: $state.glitchEnabled,
+                toggleHelp: "Simulate the TV's sync circuits and antenna reception."
+            )
             if panelExpanded {
                 Group {
                     HStack {
@@ -39,6 +39,12 @@ struct GlitchPanel: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        .onAppear {
+            panelExpanded = state.isGlitchReceptionActive || state.expandAllPanelsForTesting
+        }
+        .onChange(of: state.isGlitchReceptionActive) { _, active in
+            if active { panelExpanded = true }
+        }
     }
 }
 

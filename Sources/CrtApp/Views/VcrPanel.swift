@@ -9,19 +9,25 @@ import CrtCore
 /// spacing losses), see CrtCore/VcrStage.swift.
 struct VcrPanel: View {
     @Environment(AppState.self) private var state
-    @State private var panelExpanded = true
+    @State private var panelExpanded = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Twirl(expanded: $panelExpanded)
-                Text("VCR").font(.headline)
-                Spacer()
-                Toggle("", isOn: Binding(get: { state.vcrEnabled }, set: { state.vcrEnabled = $0 }))
-                    .toggleStyle(.switch)
-                    .labelsHidden()
-                    .help(GlitchParam.byID[GlitchParam.vcrID]?.help ?? "")
-            }
+            StageHeader(
+                stepNumber: 5,
+                title: "VCR",
+                expanded: $panelExpanded,
+                summary: state.vcrSummary,
+                isModified: state.isVcrModified,
+                toggleBinding: Binding(
+                    get: { state.vcrEnabled },
+                    set: { on in
+                        state.vcrEnabled = on
+                        panelExpanded = on
+                    }
+                ),
+                toggleHelp: GlitchParam.byID[GlitchParam.vcrID]?.help ?? ""
+            )
             if panelExpanded {
                 Group {
                     HStack {
@@ -42,6 +48,8 @@ struct VcrPanel: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        .onAppear { panelExpanded = state.vcrEnabled || state.expandAllPanelsForTesting }
+        .onChange(of: state.vcrEnabled) { _, on in panelExpanded = on }
     }
 }
 

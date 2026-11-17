@@ -96,6 +96,24 @@ enum Paths {
         return nil
     }
 
+    /// Managed folder for user-saved look presets (`~/Library/Application Support/NTSCRT/Presets`).
+    static func userPresetsFolder() -> URL {
+        let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+            ?? URL(fileURLWithPath: NSTemporaryDirectory())
+        let dir = base.appendingPathComponent("NTSCRT/Presets", isDirectory: true)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        return dir
+    }
+
+    /// Bundled sample images (`testpattern.png`, `game-frame.png`) for instant onboarding.
+    static func bundledTestAsset(named filename: String) -> URL? {
+        if let r = resourcesURL(name: "TestAssets/\(filename)") { return r }
+        for candidate in candidates(suffix: "TestAssets/\(filename)") {
+            if FileManager.default.fileExists(atPath: candidate.path) { return candidate }
+        }
+        return nil
+    }
+
     private static func candidates(suffix: String) -> [URL] {
         var bases: [URL] = []
         bases.append(URL(fileURLWithPath: FileManager.default.currentDirectoryPath))

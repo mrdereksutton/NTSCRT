@@ -26,6 +26,26 @@ final class AppState {
     let pipeline: Pipeline
     let presetsRoot: URL
 
+    // MARK: - undo, preset & comparison state
+
+    enum ComparisonSlot: String, Sendable { case a = "A", b = "B" }
+    let lookUndoManager = UndoManager()
+    var activePresetName: String?
+    var isLookModified: Bool = false
+    var bypassAllStages: Bool = false { didSet { markChainDirty() } }
+    var propagateEditsToAllKeys: Bool = false
+    var slotASnapshot: LookSnapshot?
+    var slotBSnapshot: LookSnapshot?
+    var activeComparisonSlot: ComparisonSlot?
+    @ObservationIgnored var lastCommittedSnapshot: LookSnapshot?
+    @ObservationIgnored var pendingUndoBefore: LookSnapshot?
+    @ObservationIgnored var undoCoalesceTask: Task<Void, Never>?
+    @ObservationIgnored var isRestoringSnapshot = false
+    let expandAllPanelsForTesting =
+        ProcessInfo.processInfo.environment["CRT_SLIDER_E2E"] != nil
+        || ProcessInfo.processInfo.environment["CRT_PANEL_BENCH"] != nil
+        || ProcessInfo.processInfo.environment["CRT_DUMP_TOOLTIPS"] != nil
+
     // MARK: - source
 
     var sourceURL: URL? {
@@ -169,7 +189,7 @@ final class AppState {
     /// Something upstream of the shader chain changed (NTSC settings or
     /// toggle, downscale, timeline): invalidate pre-baked frames everywhere
     /// — queued pipeline output, the frame cache — and pre-render again.
-    private func noteChainInputEdited() {
+    func noteChainInputEdited() {
         ntscGeneration &+= 1
         processedSourceTexture = nil
         cachedChainInput = nil
@@ -681,14 +701,14 @@ final class AppState {
 
     // MARK: - downscale
 
-    var downscaleEnabled: Bool = true { didSet { markChainDirty(); noteChainInputEdited() } }
+    var downscaleEnabled: Bool = true { didSet { if downscaleEnabled != oldValue { noteUserEditForUndo("Toggle Downscale"); markChainDirty(); noteChainInputEdited() } } }
     /// Downscale is width-only: the horizontal resolution is chosen (or
     /// picked from a console preset), and the height follows the source's
     /// aspect ratio so any input shape works.
-    var downscaleWidth: Int = 320     { didSet { markChainDirty(); noteChainInputEdited() } }
+    var downscaleWidth: Int = 320     { didSet { if downscaleWidth != oldValue { noteUserEditForUndo("Adjust Resolution"); markChainDirty(); noteChainInputEdited() } } }
     /// Selected preset label, purely cosmetic ("Custom" when hand-edited).
     var downscalePreset: String = "VGA (320px)"
-    var downscaleMethod: DownscaleMethod = .nearest { didSet { markChainDirty(); noteChainInputEdited() } }
+    var downscaleMethod: DownscaleMethod = .nearest { didSet { if downscaleMethod != oldValue { noteUserEditForUndo("Change Sampling"); markChainDirty(); noteChainInputEdited() } } }
 
     /// Derived from the source aspect (rounded to even lines).
     var downscaleHeight: Int {
@@ -700,21 +720,21 @@ final class AppState {
 
     /// Master shader on/off toggle. When false, the preview shows the source
     /// (or downscaled source) without any CRT shader applied.
-    var shaderEnabled: Bool = true { didSet { markChainDirty() } }
+    var shaderEnabled: Bool = true { didSet { if shaderEnabled != oldValue { noteUserEditForUndo("Toggle CRT"); markChainDirty() } } }
 
     // MARK: - glitch (simulated TV receiver — CrtCore/Receiver.swift)
 
     /// On by default, so the knobs are ready to turn. With every knob at its
     /// default (a healthy set, clean signal) the output is byte-identical to
     /// having the stage off — off, it isn't run at all.
-    var glitchEnabled: Bool = true { didSet { markChainDirty() } }
+    var glitchEnabled: Bool = true { didSet { if glitchEnabled != oldValue { noteUserEditForUndo("Toggle Glitch"); markChainDirty() } } }
     // Values live in an unobserved store; views observe `glitchRevision`, which an
     // edit bumps at once and timeline playback/scrubbing at most ten times a
     // second (see refreshPanels) — otherwise every row of the panel rebuilds
     // on every played frame.
     @ObservationIgnored private var glitchValuesStore: [String: Double] = GlitchParam.defaultValues
     private var glitchRevision: Int = 0
-    private(set) var glitchValues: [String: Double] {
+    var glitchValues: [String: Double] {
         get { _ = glitchRevision; return glitchValuesStore }
         set { glitchValuesStore = newValue; glitchRevision &+= 1 }
     }
@@ -745,21 +765,21 @@ final class AppState {
     /// Off by default: unlike Glitch, a codec changes the picture as soon as
     /// it runs. The first time it's switched on, its format is applied —
     /// resolution (the Downscale) included.
-    var digitalEnabled: Bool = false { didSet { markChainDirty(); noteChainInputEdited() } }
+    var digitalEnabled: Bool = false { didSet { if digitalEnabled != oldValue { noteUserEditForUndo("Toggle Digital Video"); markChainDirty(); noteChainInputEdited() } } }
     // Values live in an unobserved store; views observe `digitalRevision`, which an
     // edit bumps at once and timeline playback/scrubbing at most ten times a
     // second (see refreshPanels) — otherwise every row of the panel rebuilds
     // on every played frame.
     @ObservationIgnored private var digitalValuesStore: [String: Double] = DigitalParam.startingValues
     private var digitalRevision: Int = 0
-    private(set) var digitalValues: [String: Double] {
+    var digitalValues: [String: Double] {
         get { _ = digitalRevision; return digitalValuesStore }
         set { digitalValuesStore = newValue; digitalRevision &+= 1 }
     }
     var digitalSettings: DigitalSettings { DigitalSettings(values: digitalValues) }
     /// Whether a format (or a look's settings) has been applied, so
     /// switching the stage on doesn't reset what's been chosen.
-    @ObservationIgnored private var digitalFormatApplied = false
+    @ObservationIgnored var digitalFormatApplied = false
     /// The preview's codec (main thread). Playback and exports run their own.
     @ObservationIgnored private(set) lazy var digitalStage: DigitalStage = {
         let stage = DigitalStage()
@@ -827,7 +847,8 @@ final class AppState {
     /// keyframes, as every other panel's edits show until the next scrub.
     @ObservationIgnored private var glitchOffKeyEdit: [String: Double]?
 
-    private func glitchEdited() {
+    func glitchEdited() {
+        noteUserEditForUndo("Adjust Tape / Receiver")
         let parked = timelineKeys.contains { abs($0.t - playheadT) < parkedTolerance }
         if timelineEnabled, !suppressAutoKey, !timelineKeys.isEmpty, !parked || timelinePlaying {
             glitchOffKeyEdit = glitchValues
@@ -858,6 +879,7 @@ final class AppState {
     }
 
     func setDigitalValue(_ id: String, _ value: Double) {
+        noteUserEditForUndo("Adjust Digital Video")
         digitalValues[id] = value
         autoKeyIfParked()
         markChainDirty()
@@ -1296,23 +1318,26 @@ final class AppState {
 
     /// True while parameter writes come from the app (scrubbing, preset
     /// load, chain reload) rather than from the user turning a knob.
-    private var suppressAutoKey = false
+    var suppressAutoKey = false
 
-    private func withAutoKeySuppressed(_ body: () -> Void) {
+    func withAutoKeySuppressed(_ body: () -> Void) {
         let previous = suppressAutoKey
         suppressAutoKey = true
         body()
         suppressAutoKey = previous
     }
 
-    /// When the playhead sits exactly on a keyframe, editing any parameter
-    /// rewrites that keyframe — the After Effects / Premiere behavior, so
-    /// tweaking a look you've jumped to doesn't silently get discarded on
-    /// the next scrub. Only ever fires for user edits, and only for an
-    /// exact hit: at any other time the live values are interpolated, and
-    /// baking those into a keyframe would drag it toward its neighbor.
-    private func autoKeyIfParked() {
+    func autoKeyIfParked() {
         guard timelineEnabled, !suppressAutoKey, !timelinePlaying, !exportInProgress else { return }
+        if propagateEditsToAllKeys, !timelineKeys.isEmpty {
+            for idx in timelineKeys.indices {
+                timelineKeys[idx].shaderParams = paramValues
+                timelineKeys[idx].ntscValues = ntscValues
+                timelineKeys[idx].glitchValues = glitchValues
+                timelineKeys[idx].digitalValues = digitalValues
+            }
+            return
+        }
         guard let i = timelineKeys.firstIndex(where: { abs($0.t - playheadT) < parkedTolerance })
         else { return }
         timelineKeys[i].shaderParams = paramValues
@@ -1336,13 +1361,26 @@ final class AppState {
     func installKeyMonitor() {
         guard keyMonitor == nil else { return }
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .keyUp]) { [weak self] event in
-            guard let self, event.keyCode == 49,
-                  event.modifierFlags.intersection([.command, .option, .control, .shift]).isEmpty,
-                  self.timelineEnabled, self.timelineAvailable, !self.exportInProgress
-            else { return event }
+            guard let self else { return event }
             if let editor = NSApp.keyWindow?.firstResponder as? NSTextView, editor.isEditable {
                 return event
             }
+            // Hold `\` (keyCode 42) to temporarily bypass all stages and inspect clean source.
+            if event.keyCode == 42,
+               event.modifierFlags.intersection([.command, .option, .control]).isEmpty,
+               !self.exportInProgress {
+                if event.type == .keyDown {
+                    if !event.isARepeat { self.bypassAllStages = true }
+                    return nil
+                } else {
+                    self.bypassAllStages = false
+                    return nil
+                }
+            }
+            guard event.keyCode == 49,
+                  event.modifierFlags.intersection([.command, .option, .control, .shift]).isEmpty,
+                  self.timelineEnabled, self.timelineAvailable, !self.exportInProgress
+            else { return event }
             if event.type == .keyDown {
                 if event.isARepeat { return self.spaceDecidesOnRelease ? event : nil }
                 self.spacePanned = false
@@ -1408,18 +1446,25 @@ final class AppState {
     // on every played frame.
     @ObservationIgnored private var ntscValuesStore: [String: Any] = [:]
     private var ntscRevision: Int = 0
-    private(set) var ntscValues: [String: Any] {
+    var ntscValues: [String: Any] {
         get { _ = ntscRevision; return ntscValuesStore }
         set { ntscValuesStore = newValue; ntscRevision &+= 1 }
     }
     var ntscEnabled: Bool = true {
-        didSet { noteChainInputEdited(); markChainDirty() }
+        didSet {
+            if ntscEnabled != oldValue {
+                noteUserEditForUndo("Toggle NTSC")
+                noteChainInputEdited()
+                markChainDirty()
+            }
+        }
     }
     private(set) var ntscError: String?
 
     var ntscAvailable: Bool { ntscStage != nil }
 
     func setNtscValue(_ name: String, _ value: Any) {
+        noteUserEditForUndo("Adjust NTSC")
         ntscValues[name] = value
         pushNtscSettings()
         autoKeyIfParked()
@@ -1436,11 +1481,13 @@ final class AppState {
     }
 
     func resetNtsc() {
-        ntscValues = ntscDefaults
-        pushNtscSettings()
-        autoKeyIfParked()
-        noteChainInputEdited()
-        markChainDirty()
+        performUndoable("Reset NTSC") {
+            ntscValues = ntscDefaults
+            pushNtscSettings()
+            autoKeyIfParked()
+            noteChainInputEdited()
+            markChainDirty()
+        }
     }
 
     /// Replace the whole VHS settings dict at once (timeline scrub/load).
@@ -1450,7 +1497,7 @@ final class AppState {
         markChainDirty()
     }
 
-    private func pushNtscSettings() {
+    func pushNtscSettings() {
         guard let stage = ntscStage,
               let data = try? JSONSerialization.data(withJSONObject: ntscValues),
               let json = String(data: data, encoding: .utf8) else { return }
@@ -1477,6 +1524,11 @@ final class AppState {
         // Offset must stay below height or the switch band leaves the frame
         // and the whole effect goes dead (measured: literally zero output
         // change with 6/18).
+        // Retired ntsc-rs VHS groups are superseded by the physical VCR stage
+        // and must stay OFF on fresh launch and NTSC Reset.
+        "head_switching": false,
+        "tracking_noise": false,
+        "vhs_settings": false,
         "head_switching_height": 8,
         "head_switching_offset": 3,
         "head_switching_horizontal_shift": 41.57,
@@ -1548,7 +1600,7 @@ final class AppState {
     // on every played frame.
     @ObservationIgnored private var paramValuesStore: [String: Float] = [:]
     private var paramRevision: Int = 0
-    private(set) var paramValues: [String: Float] {
+    var paramValues: [String: Float] {
         get { _ = paramRevision; return paramValuesStore }
         set { paramValuesStore = newValue; paramRevision &+= 1 }
     }
@@ -1560,7 +1612,7 @@ final class AppState {
     /// into a no-op after the first visit.
     private var chainCache: [String: LRShaderChain] = [:]
     /// Per-preset parameter values, so each preset remembers its own slider state.
-    private var savedParamValues: [String: [String: Float]] = [:]
+    var savedParamValues: [String: [String: Float]] = [:]
 
     // MARK: - render triggers
 
@@ -1811,6 +1863,7 @@ final class AppState {
         self.presetsRoot = presetsRoot
         setUpNtsc()
         reloadChain()
+        commitBaselineSnapshot()
     }
 
     // MARK: - derived
@@ -1996,6 +2049,7 @@ final class AppState {
     /// the changed value instead of re-pushing the whole dict.
     func setParam(_ name: String, _ value: Float) {
         guard paramValues[name] != value else { return }
+        noteUserEditForUndo("Adjust CRT")
         paramValues[name] = value
         applyOne(name, value)
         autoKeyIfParked()
@@ -2098,17 +2152,28 @@ final class AppState {
         try data.write(to: url)
     }
 
-    func loadLook(from url: URL) throws {
+    func loadLook(from url: URL, named presetName: String? = nil) throws {
+        let data = try Data(contentsOf: url)
+        guard let dict = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            throw LookError.badFile
+        }
+        if dict["kind"] as? String == FeedbackPresets.kind { throw LookError.feedbackPreset }
+
+        let resolvedName = presetName ?? url.deletingPathExtension().lastPathComponent
+        try performUndoable("Load \(resolvedName)") {
+            try applyLookDictionary(dict, resetCropIfAbsent: false)
+            activePresetName = resolvedName
+        }
+        isLookModified = false
+    }
+
+    func applyLookDictionary(_ dict: [String: Any], resetCropIfAbsent: Bool) throws {
         // Loading a preset writes every parameter; it must not rewrite the
         // keyframes it is in the middle of restoring.
         let previousSuppress = suppressAutoKey
         suppressAutoKey = true
         defer { suppressAutoKey = previousSuppress }
 
-        let data = try Data(contentsOf: url)
-        guard let dict = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-            throw LookError.badFile
-        }
         let lookVersion = dict["version"] as? Int ?? 1
         if dict["kind"] as? String == FeedbackPresets.kind { throw LookError.feedbackPreset }
         lookDescription = dict["description"] as? String
@@ -2121,6 +2186,9 @@ final class AppState {
             setCrop(SourceCrop(ratio: ratio, x: unit("x"), y: unit("y"),
                                scale: min(SourceCrop.maxScale, max(1, c["scale"] as? Double ?? 1))))
             cropEnabled = true
+        } else if resetCropIfAbsent {
+            setCrop(SourceCrop(ratio: .square, x: 0.5, y: 0.5, scale: 1))
+            cropEnabled = false
         }
         if let d = dict["downscale"] as? [String: Any] {
             if let v = d["enabled"] as? Bool { downscaleEnabled = v }

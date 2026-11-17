@@ -2458,6 +2458,31 @@ struct ContentView: View {
         }
 
         ToolbarItemGroup(placement: .primaryAction) {
+            Button {
+                state.undoLook()
+            } label: {
+                Image(systemName: "arrow.uturn.backward")
+            }
+            .disabled(!state.lookUndoManager.canUndo)
+            .help("Undo (\(state.lookUndoManager.undoActionName)) — ⌘Z")
+
+            Button {
+                state.redoLook()
+            } label: {
+                Image(systemName: "arrow.uturn.forward")
+            }
+            .disabled(!state.lookUndoManager.canRedo)
+            .help("Redo (\(state.lookUndoManager.redoActionName)) — ⇧⌘Z")
+
+            Button {
+                state.resetAll()
+            } label: {
+                Label("Reset", systemImage: "arrow.counterclockwise")
+                    .labelStyle(.titleAndIcon)
+            }
+            .keyboardShortcut("r", modifiers: [.command, .option])
+            .help("Reset all stages, crop, downscale, timeline, and shaders back to a clean starting state (⌥⌘R)")
+
             Toggle(isOn: Binding(
                 get: { state.timelineEnabled },
                 set: { state.timelineEnabled = $0 }
@@ -2467,36 +2492,27 @@ struct ContentView: View {
             }
             .toggleStyle(.button)
             .disabled(!state.timelineAvailable)
-            .help("Keyframe-animate the NTSC and CRT parameters over time and export the result as video")
+            .help("Keyframe-animate parameters over time and export the result as video")
 
             Menu {
+                Button("Reset to Clean Default") { state.resetAll() }
+                Divider()
                 Button("Save Preset…") { savePreset() }
                 Button("Load Preset…") { loadPreset() }
                 if !builtInPresets.isEmpty {
                     Divider()
                     ForEach(builtInPresets) { preset in
-                        Button(preset.name) { load(preset.url) }
+                        Button(preset.displayTitle) { load(preset.url, named: preset.displayTitle) }
                             .help(preset.description ?? "")
                     }
                 }
-                Divider()
-                // Starting points for the Digital video stage alone: they
-                // switch it on and set its controls and the Downscale width,
-                // leaving the rest of the look as it is.
-                Section("Digital video") {
-                    ForEach(DigitalFormat.all) { f in
-                        Button(f.name) {
-                            state.applyDigitalFormat(f)
-                            state.setDigitalEnabled(true)
-                        }
-                        .help(f.blurb)
-                    }
-                }
             } label: {
-                Label("Preset", systemImage: "doc.badge.gearshape")
+                let title = state.activePresetName.map { state.isLookModified ? "\($0) •" : $0 }
+                    ?? (state.isLookModified ? "Preset •" : "Preset")
+                Label(title, systemImage: "doc.badge.gearshape")
                     .labelStyle(.titleAndIcon)
             }
-            .help("Save or load the whole configuration (downscale + VHS + shader + view) as a JSON file")
+            .help("Choose a preset or save/load look JSON files")
 
             Button {
                 showHowlaround = true
@@ -2567,9 +2583,9 @@ struct ContentView: View {
         load(url)
     }
 
-    private func load(_ url: URL) {
+    private func load(_ url: URL, named name: String? = nil) {
         do {
-            try state.loadLook(from: url)
+            try state.loadLook(from: url, named: name)
         } catch {
             presetAlert("Couldn't load the preset.", error)
         }
@@ -2666,19 +2682,16 @@ private struct CropContextOverlay: View {
 private struct Sidebar: View {
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 18) {
+            VStack(alignment: .leading, spacing: 16) {
                 SourcePanel()
                 Divider()
-                // Crop and Downscale share a section: both reshape the
-                // picture before the chain, and one divider less saves room.
-                VStack(alignment: .leading, spacing: 10) {
-                    CropPanel()
-                    DownscalePanel()
-                }
+                CropPanel()
                 Divider()
                 DigitalVideoPanel()
                 Divider()
                 NtscPanel()
+                Divider()
+                DownscalePanel()
                 Divider()
                 VcrPanel()
                 Divider()

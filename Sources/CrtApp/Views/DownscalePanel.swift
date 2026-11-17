@@ -27,15 +27,26 @@ struct DownscalePanel: View {
     var body: some View {
         @Bindable var state = state
         VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Twirl(expanded: $expanded)
-                Toggle("Downscale before shader", isOn: $state.downscaleEnabled)
-                    .font(.headline)
-            }
+            StageHeader(
+                stepNumber: 4,
+                title: "Downscale",
+                expanded: $expanded,
+                summary: state.downscaleSummary,
+                isModified: state.isDownscaleModified,
+                toggleBinding: $state.downscaleEnabled,
+                toggleHelp: "Set the scanline raster resolution fed into VCR, Glitch, and CRT."
+            )
 
             if expanded {
             Group {
-                Text("Horizontal resolution").font(.subheadline).foregroundStyle(.secondary)
+                HStack {
+                    Text("Horizontal resolution").font(.subheadline).foregroundStyle(.secondary)
+                    Spacer()
+                    if state.isDownscaleModified {
+                        Button("Reset") { state.resetDownscale() }
+                            .buttonStyle(.borderless)
+                    }
+                }
                 Menu {
                     ForEach(Self.presets, id: \.label) { p in
                         Button(p.label) {
