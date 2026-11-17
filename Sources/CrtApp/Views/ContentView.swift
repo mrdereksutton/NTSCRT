@@ -11,6 +11,8 @@ struct ContentView: View {
     // screenshot verification (see DEVELOPMENT.md).
     @State private var showExport =
         ProcessInfo.processInfo.environment["CRT_SHOW_EXPORT"] == "1"
+    @State private var showPresets = false
+    @State private var canvasDropTargeted = false
     // CRT_SHOW_HOWL=1 opens the Howlaround panel once the source has loaded.
     @State private var showHowlaround = false
     private let paletteFadeSeconds =
@@ -49,6 +51,24 @@ struct ContentView: View {
                         .aspectRatio(state.sourceAspect, contentMode: .fit)
                         .anchorPreference(key: PreviewFrameKey.self, value: .bounds) { $0 }
                         .padding(8)
+
+                    if !state.hasSourcePicture && state.sourceURL == nil {
+                        EmptyCanvasView(isDropTargeted: canvasDropTargeted) {
+                            openMedia()
+                        }
+                        .padding(24)
+                    }
+                }
+                .overlay {
+                    if canvasDropTargeted && state.hasSourcePicture {
+                        RoundedRectangle(cornerRadius: 10)
+                            .strokeBorder(Color.accentColor, lineWidth: 3)
+                            .padding(6)
+                            .allowsHitTesting(false)
+                    }
+                }
+                .onDrop(of: [UTType.fileURL, UTType.image, UTType.movie], isTargeted: $canvasDropTargeted) { providers in
+                    state.handleDroppedProviders(providers)
                 }
                 // While the picture is dragged to move the crop: the rest of
                 // the source, dimmed, around it.
@@ -2494,25 +2514,23 @@ struct ContentView: View {
             .disabled(!state.timelineAvailable)
             .help("Keyframe-animate parameters over time and export the result as video")
 
-            Menu {
-                Button("Reset to Clean Default") { state.resetAll() }
-                Divider()
-                Button("Save Preset…") { savePreset() }
-                Button("Load Preset…") { loadPreset() }
-                if !builtInPresets.isEmpty {
-                    Divider()
-                    ForEach(builtInPresets) { preset in
-                        Button(preset.displayTitle) { load(preset.url, named: preset.displayTitle) }
-                            .help(preset.description ?? "")
-                    }
-                }
+            Button {
+                showPresets.toggle()
             } label: {
                 let title = state.activePresetName.map { state.isLookModified ? "\($0) •" : $0 }
-                    ?? (state.isLookModified ? "Preset •" : "Preset")
+                    ?? (state.isLookModified ? "Presets •" : "Presets")
                 Label(title, systemImage: "doc.badge.gearshape")
                     .labelStyle(.titleAndIcon)
             }
-            .help("Choose a preset or save/load look JSON files")
+            .popover(isPresented: $showPresets, arrowEdge: .bottom) {
+                PresetBrowserPopover(
+                    onDismiss: { showPresets = false },
+                    onImportFile: { loadPreset() },
+                    onExportFile: { savePreset() }
+                )
+                .environment(state)
+            }
+            .help("Browse categorized presets, search looks, or save to My Presets")
 
             Button {
                 showHowlaround = true

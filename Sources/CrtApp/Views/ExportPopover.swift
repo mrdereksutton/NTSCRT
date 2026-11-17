@@ -66,14 +66,23 @@ struct ExportPopover: View {
                 Text(hasKeyframes ? "Video from this image (keyframe animation)"
                                   : "Video from this image (VHS motion)")
                     .font(.caption).bold()
-                // Length belongs to the timeline — one source of truth, set
-                // where you can see the keyframes. GIF brings its own frame
-                // rate, so don't advertise the timeline's here.
-                Text(state.exportFormat.isGIF
-                     ? String(format: "%.1f s — set in the Timeline", state.timelineDuration)
-                     : String(format: "%.1f s at %d fps — set in the Timeline",
-                              state.timelineDuration, state.timelineFPS))
-                    .font(.caption).foregroundStyle(.secondary)
+                HStack(spacing: 6) {
+                    Text("Duration").font(.caption)
+                    NumericField(value: $state.timelineDuration, range: 0.5...600, width: 48)
+                    Text("s").font(.caption).foregroundStyle(.secondary)
+                    if !state.exportFormat.isGIF {
+                        Spacer()
+                        Picker("", selection: $state.timelineFPS) {
+                            Text("12 fps").tag(12)
+                            Text("24 fps").tag(24)
+                            Text("30 fps").tag(30)
+                            Text("60 fps").tag(60)
+                        }
+                        .labelsHidden()
+                        .pickerStyle(.menu)
+                        .fixedSize()
+                    }
+                }
             }
 
             ExportVideoOptions(lengthSeconds: isVideo ? state.effectiveTimelineDuration

@@ -57,6 +57,21 @@ struct CrtAppApp: App {
                     .keyboardShortcut("z", modifiers: [.command, .shift])
                     .disabled(!(appState?.lookUndoManager.canRedo ?? false))
             }
+            CommandGroup(after: .pasteboard) {
+                Button("Copy Rendered Frame") { appState?.copyRenderedFrameToClipboard() }
+                    .keyboardShortcut("c", modifiers: [.command, .shift])
+                    .disabled(!(appState?.hasSourcePicture ?? false))
+                Button("Paste Source Image") { _ = appState?.pasteSourceFromClipboard() }
+                    .keyboardShortcut("v", modifiers: .command)
+                    .disabled(appState == nil)
+            }
+            CommandGroup(after: .newItem) {
+                Menu("Load Sample Source") {
+                    Button("Broadcast Test Card") { appState?.loadBundledSample("testpattern.png") }
+                    Button("16-Bit Pixel Art") { appState?.loadBundledSample("game-frame.png") }
+                }
+                .disabled(appState == nil)
+            }
             CommandMenu("Look") {
                 Button("Reset Look") { appState?.resetAll() }
                     .keyboardShortcut("r", modifiers: [.command, .option])

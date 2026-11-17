@@ -25,6 +25,19 @@ struct TransportBar: View {
                 .disabled(state.exportInProgress)
                 .help(state.videoPlaying ? "Pause" : "Play the video in the preview (with all effects applied)")
 
+                if state.hasVideoAudioTrack {
+                    Button {
+                        state.previewAudioMuted.toggle()
+                    } label: {
+                        Image(systemName: state.previewAudioMuted ? "speaker.slash.fill" : "speaker.wave.2.fill")
+                            .font(.system(size: 12))
+                            .foregroundStyle(state.previewAudioMuted ? .secondary : .primary)
+                            .frame(width: 18)
+                    }
+                    .buttonStyle(.borderless)
+                    .help(state.previewAudioMuted ? "Unmute video audio" : "Mute video audio")
+                }
+
                 VStack(spacing: 1) {
                     Slider(value: idx, in: 0...Double(max(1, total - 1)), step: 1)
                     // RAM-preview render bar (see TimelineBar.cachedStrip);

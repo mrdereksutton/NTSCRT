@@ -51,6 +51,19 @@ struct TimelineBar: View {
             .tooltip(state.timelinePlaying ? "Pause"
                      : "Preview the keyframe animation in the preview (loops)")
 
+            if state.hasVideoAudioTrack {
+                Button {
+                    state.previewAudioMuted.toggle()
+                } label: {
+                    Image(systemName: state.previewAudioMuted ? "speaker.slash.fill" : "speaker.wave.2.fill")
+                        .font(.system(size: 12))
+                        .foregroundStyle(state.previewAudioMuted ? .secondary : .primary)
+                        .frame(width: 18, height: 20)
+                }
+                .buttonStyle(.borderless)
+                .tooltip(state.previewAudioMuted ? "Unmute video audio" : "Mute video audio")
+            }
+
             Button {
                 state.setKeyframeAtPlayhead()
                 selectedKey = state.timelineKeys.first { abs($0.t - state.playheadT) < 0.005 }?.id

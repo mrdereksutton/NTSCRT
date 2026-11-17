@@ -8,15 +8,32 @@ struct SourcePanel: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Twirl(expanded: $expanded)
-                Text("Source").font(.headline)
-            }
+            StageHeader(
+                stepNumber: nil,
+                title: "Source",
+                expanded: $expanded,
+                summary: state.sourceURL?.lastPathComponent
+            )
 
-            @Bindable var state = state
             if expanded {
             HStack {
                 Button("Open…") { openMedia() }
+                Menu("Samples") {
+                    if Paths.bundledTestAsset(named: "testpattern.png") != nil {
+                        Button("Broadcast Test Card") { state.loadBundledSample("testpattern.png") }
+                    }
+                    if Paths.bundledTestAsset(named: "game-frame.png") != nil {
+                        Button("16-Bit Pixel Art") { state.loadBundledSample("game-frame.png") }
+                    }
+                    let recents = state.recentSourceURLs
+                    if !recents.isEmpty {
+                        Divider()
+                        ForEach(recents, id: \.path) { url in
+                            Button(url.lastPathComponent) { state.sourceURL = url }
+                        }
+                    }
+                }
+                .fixedSize()
                 if state.sourceURL != nil {
                     Button("Clear", role: .destructive) {
                         state.sourceURL = nil
@@ -47,14 +64,8 @@ struct SourcePanel: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .onDrop(of: [UTType.fileURL], isTargeted: nil) { providers in
-            guard let provider = providers.first else { return false }
-            _ = provider.loadObject(ofClass: URL.self) { url, _ in
-                if let url {
-                    DispatchQueue.main.async { state.sourceURL = url }
-                }
-            }
-            return true
+        .onDrop(of: [UTType.fileURL, UTType.image, UTType.movie], isTargeted: nil) { providers in
+            state.handleDroppedProviders(providers)
         }
     }
 

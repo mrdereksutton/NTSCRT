@@ -1,6 +1,7 @@
 import Foundation
 import Metal
 import AppKit
+import AVFoundation
 import Observation
 import UniformTypeIdentifiers
 import os
@@ -48,6 +49,14 @@ final class AppState {
     var sidebarMode: SidebarMode = .quick
     var showEditedOnly: Bool = false
 
+    // MARK: - preview audio
+
+    @ObservationIgnored var previewAudioPlayer: AVPlayer?
+    var hasVideoAudioTrack: Bool = false
+    var previewAudioMuted: Bool = false {
+        didSet { previewAudioPlayer?.isMuted = previewAudioMuted }
+    }
+
     // MARK: - source
 
     var sourceURL: URL? {
@@ -89,7 +98,9 @@ final class AppState {
                     // Seek while playing: the producer is decoding somewhere
                     // else now — restart it at the new position.
                     startPipeline(at: currentFrameIndex)
+                    syncPreviewAudioPlay(atFrame: currentFrameIndex)
                 } else {
+                    syncPreviewAudioSeek(toFrame: currentFrameIndex)
                     Task { await reloadVideoFrame() }
                 }
             }
@@ -248,7 +259,9 @@ final class AppState {
 
         playbackFPS = Double(max(1, source.frameRate))
         stopPrerender()     // one producer at a time; playback fills the cache itself
-        startPipeline(at: (currentFrameIndex + 1) % max(1, source.totalFrames))
+        let startIdx = (currentFrameIndex + 1) % max(1, source.totalFrames)
+        startPipeline(at: startIdx)
+        syncPreviewAudioPlay(atFrame: startIdx)
         // Consumption is pull-model from the display link (see
         // consumePipelinedFrame); a nudge starts the first draw.
         markChainDirty()
@@ -315,7 +328,10 @@ final class AppState {
         playbackDropped += dropped
         guard let out else { return }
 
-        if let prev = pipelineOutput, out.frameIndex < prev.frameIndex { playbackLoops += 1 }
+        if let prev = pipelineOutput, out.frameIndex < prev.frameIndex {
+            playbackLoops += 1
+            syncPreviewAudioPlay(atFrame: out.frameIndex)
+        }
         pipelineOutput = out
         suppressFrameReload = true
         currentFrameIndex = out.frameIndex
@@ -383,6 +399,7 @@ final class AppState {
 
     func stopPlayback() {
         videoPlaying = false
+        syncPreviewAudioPause()
         playbackTask?.cancel()
         playbackTask = nil
         playbackPipeline?.stop()
@@ -1379,6 +1396,16 @@ final class AppState {
                     return nil
                 }
             }
+            // Timeline shortcuts (`K` keyframe, `[` prev key, `]` next key)
+            if event.type == .keyDown, !event.isARepeat,
+               event.modifierFlags.intersection([.command, .option, .control]).isEmpty,
+               self.timelineEnabled, self.timelineAvailable, !self.exportInProgress {
+                if let ch = event.charactersIgnoringModifiers?.lowercased() {
+                    if ch == "k" { self.setKeyframeAtPlayhead(); return nil }
+                    if ch == "[" { self.stepToAdjacentKeyframe(forward: false); return nil }
+                    if ch == "]" { self.stepToAdjacentKeyframe(forward: true); return nil }
+                }
+            }
             guard event.keyCode == 49,
                   event.modifierFlags.intersection([.command, .option, .control, .shift]).isEmpty,
                   self.timelineEnabled, self.timelineAvailable, !self.exportInProgress
@@ -1920,6 +1947,7 @@ final class AppState {
         cachedChainInput = nil
         chainInputCache.invalidateAll()
         cachedRanges = []
+        tearDownPreviewAudio()
         sourceKind = nil
         sourceError = nil
         currentFrameIndex = 0
@@ -1934,6 +1962,8 @@ final class AppState {
                 sourceKind = .video(vs)
                 let tex = try await vs.frame(atIndex: 0, crop: activeCrop)
                 sourceTexture = tex
+                recordRecentSource(url)
+                await setUpPreviewAudio(for: vs)
             } catch {
                 sourceError = error.localizedDescription
             }
@@ -1943,6 +1973,7 @@ final class AppState {
                 uncroppedStill = tex
                 sourceTexture = croppedStill(tex)
                 sourceKind = .image
+                recordRecentSource(url)
             } catch {
                 sourceError = error.localizedDescription
             }

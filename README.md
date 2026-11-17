@@ -30,20 +30,25 @@ Grab the DMG from [**Releases**](../../releases/latest), open it, and drag **NTS
 
 ## Using the app
 
-Open an image or video (⌘O, or drop it on the Source panel), shape the look in the sidebar, and export (⌘E).
+Open an image or video (`⌘O`, drop anywhere on the window, paste with `⌘V`, or load a built-in sample card), shape the look in **Quick** (`⌘1`) or **All Controls** (`⌘2`) mode, and export (`⌘E`). Press `⌥⌘R` anytime to reset the entire look, or `⌘Z` / `⇧⌘Z` to undo and redo.
+
+### Quick Mode vs All Controls
+
+- **Quick**: four compatible **Era Starters** (*Clean CRT*, *80s TV*, *90s VHS*, *2000s Web*), five macro dials (*Scanline Crunch*, *Composite Bleed & Noise*, *VHS Tape & Deck Wear*, *TV Reception Glitch*, *CRT Phosphor & Glow*), and automatic signal-compatibility advisories when conflicting stages stack.
+- **All Controls**: every circuit parameter across all seven stages, with an **Edited** filter pill to show only modified controls.
 
 ### The pipeline (sidebar)
 
-The sidebar runs top to bottom in signal order. A section's checkbox or switch turns that stage off.
+The sidebar runs top to bottom in true signal order (`1` through `7`). Clicking a stage header expands or collapses it; its right switch turns that stage on or off.
 
-- **Source**: the loaded image (PNG, JPEG, HEIC) or video (MP4, MOV).
-- **Crop**: cuts the picture to an aspect ratio (square, or portrait and landscape shapes from 3:4 to 1:2) before anything else sees it. Drag the picture in the preview to move the crop, or a corner to zoom in (to cut black borders, say); double-click to center.
-- **Downscale**: the retro resolution the CRT sees (SNES 256 px, VGA 320 px, or any width). **Chunky** keeps hard pixel edges; **Smooth** is softer and steadier on video.
-- **Digital video** (off by default): a digital camera and codec ahead of the analog signal, like webcam footage dubbed to VHS. See [Digital video](#digital-video) below.
-- **NTSC (TV)**: the analog signal, with composite noise, chroma bleed and about fifty more settings. They're ntsc-rs's own, so presets paste both ways with the [ntsc-rs app](https://github.com/ntsc-rs/ntsc-rs/releases). (Its VHS settings are retired: the VCR replaces them. Older looks that use them still render the same.)
-- **VCR** (off by default): the picture recorded onto a simulated VHS tape and played back by a simulated deck. See [VCR](#vcr) below.
-- **Glitch**: a simulated TV, for dramatic failures like rolling, tearing, bending and snow. The circuits themselves are simulated, so glitches combine the way real ones did. With every knob healthy, the picture is untouched.
-- **CRT**: seven RetroArch CRT shaders (crt-royale, crt-hyllian, crt-aperture, crt-easymode, two crtglow variants, crtsim) with every parameter exposed. A grayed-out control shows which switch turns it on.
+- **Source**: the loaded image (PNG, JPEG, HEIC) or video (MP4, MOV), plus built-in test cards and recent files.
+- **1 · Crop**: cuts the picture to an aspect ratio (square, or portrait and landscape shapes from 3:4 to 1:2) before anything else sees it. Drag the picture in the preview to move the crop, or a corner to zoom in (to cut black borders, say); double-click to center.
+- **2 · Digital video** (off by default): a digital camera and codec ahead of the analog signal, like webcam footage dubbed to VHS. See [Digital video](#digital-video) below.
+- **3 · NTSC (TV)**: the analog signal, with composite noise, chroma bleed and about fifty more settings. They're ntsc-rs's own, so presets paste both ways with the [ntsc-rs app](https://github.com/ntsc-rs/ntsc-rs/releases).
+- **4 · Downscale**: the retro resolution fed into VCR, Glitch, and CRT (SNES 256 px, VGA 320 px, or any width). **Chunky** keeps hard pixel edges; **Smooth** is softer and steadier on video.
+- **5 · VCR** (off by default): the picture recorded onto a simulated VHS tape and played back by a simulated deck. See [VCR](#vcr) below.
+- **6 · Glitch**: a simulated TV, for dramatic failures like rolling, tearing, bending and snow. The circuits themselves are simulated, so glitches combine the way real ones did. With every knob healthy, the picture is untouched.
+- **7 · CRT**: seven RetroArch CRT shaders (crt-royale, crt-hyllian, crt-aperture, crt-easymode, two crtglow variants, crtsim) with every parameter exposed. A grayed-out control shows which switch turns it on.
 
 ### VCR
 
@@ -61,7 +66,7 @@ The sidebar runs top to bottom in signal order. A section's checkbox or switch t
 
 Footage recorded digitally before it goes out as an analog signal. It runs real codecs, so blocks, smears and datamoshing come out of the compression rather than being drawn.
 
-- **Formats** are in the toolbar's **Preset** menu, under Digital video: Webcam (2005), Video call, MiniDV (the VX1000 skate-video look), Early web video, CD-ROM (Video 1), and Datamosh. Each switches the stage on and sets its controls and the Downscale width.
+- **Formats** live inside the **Digital video** panel (and Quick mode): Webcam (2005), Video call, MiniDV (the VX1000 skate-video look), Early web video, CD-ROM (Video 1), and Datamosh. Each switches the stage on and sets its controls and the Downscale width.
 - **Compression**: the **Codec** (DCT like MPEG and DV, or **Block colors**: Microsoft Video 1's flat two-tone 4×4 blocks and banded 15-bit color, the early CD-ROM look), quality, keyframe interval, fixed bitrate, plus color resolution and deblocking for DCT.
 - **Capture**: frame rate, sensor noise, **Low-light noise** (grain that grows in dark scenes as the camera turns up its gain), noise reduction, and **Aliasing**, which turns fine stripes into rainbow moiré. The broad rainbow bands need a source at least twice the Downscale width.
 - **Fields**: **One field** (the default) sends the CRT one field: half the lines, each twice as tall, with a scanline per line (the 240p look). With the CRT off, each line shows twice.
@@ -70,11 +75,13 @@ Footage recorded digitally before it goes out as an analog signal. It runs real 
 
 ### Preview
 
-- **Compare** splits the view: full pipeline on the left, the original on the right. Drag the line to move the split.
-- **Integer scale** snaps the picture to whole-pixel multiples, for perfectly even scanlines.
-- The **sparkles** button keeps tape noise and jitter moving. Leave it on for the real experience.
-- Zoom with the slider or ⌥-scroll; hold Space and drag to pan.
-- Videos get a transport bar with play/pause and a frame-accurate scrubber. While a video is paused, the app renders ahead (the green line under the scrubber), so that stretch then plays back smoothly.
+- **Bypass (`\`)** temporarily shows the untouched original source while held or toggled.
+- **Compare (`⇧⌘C`)** splits the view: full pipeline on the left, the original on the right. Drag the line to move the split.
+- **A / B Slots** store two look snapshots for 1-click comparison (`⌥`-click to overwrite).
+- **Integer scale (`⇧⌘I`)** snaps the picture to whole-pixel multiples, for perfectly even scanlines.
+- The **sparkles** button keeps live noise and jitter moving. Leave it on for the real experience.
+- Zoom with the slider or ⌥-scroll (`⌘0` resets fit); hold Space and drag to pan.
+- Videos get a transport bar with play/pause, audible sound with mute toggle, and a frame-accurate scrubber. While a video is paused, the app renders ahead (the green line under the scrubber), so that stretch then plays back smoothly.
 - The palette fades when the mouse is idle; move the mouse to bring it back.
 
 ### Animating (timeline)
